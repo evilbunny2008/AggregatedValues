@@ -257,8 +257,6 @@ class AggregatedValuesService(StdService):
 
                 record[field] = converted_vt.value
 
-                self.logger.loginf(f"record[{field}]: {record[field]}")
-
             except Exception as exception:
                 self.logger.logerr(f"Aggregation failed: {exception}")
 
