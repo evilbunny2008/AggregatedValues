@@ -166,7 +166,7 @@ class AggregatedValuesService(StdService):
 
         self.logger = Logger()
 
-        self.processConfigDict(config_dict)
+        self.process_config_dict(config_dict)
 
         self.logger.loginf(f"AggregatedValues version: {self.version}")
 
