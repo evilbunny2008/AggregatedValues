@@ -104,7 +104,7 @@ class TimeSpanProvider:
 
     def last3hours(self, timestamp):
         ''' Get a timespan for the past 3 hours. '''
-        return TimeSpan(timestamp - 10800, timestamp - 10800)
+        return TimeSpan(timestamp - 10800, timestamp)
 
     def last24hours(self, timestamp):
         ''' Get a timespan for the last 24 hours. '''
@@ -256,9 +256,9 @@ class AggregatedValuesService(StdService):
                 self.logger.loginf(f"time_span: {time_span}")
 
                 record[field] = \
-                    weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)[2]
+                    weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)
 
-            except (weewx.CannotCalculate, weewx.UnknownAggregation, weewx.UnknownType) as exception:
+            except Exception as exception:
                 self.logger.logerr(f"Aggregation failed: {exception}")
 
     def shutDown(self):
