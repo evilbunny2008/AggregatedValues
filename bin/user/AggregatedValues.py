@@ -214,7 +214,7 @@ class AggregatedValuesService(StdService):
                 continue
 
             field_dict = service_dict.get(field, {})
-            ignore = to_bool(field_dict.get('ignore', True))
+            ignore = to_bool(field_dict.get('ignore', False))
             if ignore:
                 continue
 
