@@ -32,15 +32,15 @@ class Logger:
 
     def logdbg(self, msg):
         """ log debug messages """
-        self.log.debug("%s %s", threading.get_native_id(), msg)
+        self.log.debug(msg)
 
     def loginf(self, msg):
         """ log informational messages """
-        self.log.info("%s %s", threading.get_native_id(), msg)
+        self.log.info(msg)
 
     def logerr(self, msg):
         """ log error messages """
-        self.log.error("%s %s", threading.get_native_id(), msg)
+        self.log.error(msg)
 
 class TimeSpanProvider:
     ''' Manage the timespans. '''
