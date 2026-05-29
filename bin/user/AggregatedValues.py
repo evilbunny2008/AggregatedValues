@@ -183,8 +183,8 @@ class AggregatedValuesService(StdService):
 
         data_binding = service_dict.get('data_binding', 'wx_binding')
 
-        #db_manager = self.engine.db_binder.get_manager(data_binding=data_binding, initialize=True)
-        db_manager = self.engine.db_binder.get_manager(data_binding=data_binding)
+        #self.db_manager = self.engine.db_binder.get_manager(data_binding=data_binding, initialize=True)
+        self.db_manager = self.engine.db_binder.get_manager(data_binding=data_binding)
 
         self.timespan_provider = TimeSpanProvider(engine.stn_info.week_start, int(service_dict.get("since_hour", 0)))
 
