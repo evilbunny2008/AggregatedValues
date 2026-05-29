@@ -248,6 +248,8 @@ class AggregatedValuesService(StdService):
 
             field_dict = self.fields[field]
 
+            self.logger.loginf(f"field_dict: {field_dict}")
+
             try:
                 time_span = self.timespan_provider.get_timespan(field_dict, record['dateTime'])
 
