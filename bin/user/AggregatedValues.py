@@ -242,9 +242,12 @@ class AggregatedValuesService(StdService):
 
         for field in self.fields:
             name = field["name"]
-            time_span = self.timespan_provider.get_timespan(field, record['dateTime'])
+
+            self.logger.loginf(f"Processing field '{name}'...")
 
             try:
+                time_span = self.timespan_provider.get_timespan(field, record['dateTime'])
+
                 record[name] = \
                     weewx.xtypes.get_aggregate(field['observation'], time_span, field['aggregation'], self.db_manager)
 
