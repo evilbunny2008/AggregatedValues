@@ -245,13 +245,13 @@ class AggregatedValuesService(StdService):
 
             self.logger.loginf(f"field_dict: {field_dict}")
 
+            time_span = self.timespan_provider.get_timespan(field_dict, record['dateTime'])
+
+            self.logger.loginf(f"time_span: {time_span}")
+
+            self.logger.loginf(weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_lookup))
+
             try:
-                time_span = self.timespan_provider.get_timespan(field_dict, record['dateTime'])
-
-                self.logger.loginf(f"time_span: {time_span}")
-
-                self.logger.loginf(weewx.xtypes.get_aggregate("outTemp", time_span, "diff", self.db_lookup))
-
                 record[field] = \
                     weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_lookup)
 
