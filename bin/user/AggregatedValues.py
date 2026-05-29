@@ -256,7 +256,7 @@ class AggregatedValuesService(StdService):
 
             try:
                 record[field] = \
-                    weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)[2]
+                    weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)[0]
 
             except Exception as exception:
                 self.logger.logerr(f"Aggregation failed: {exception}")
