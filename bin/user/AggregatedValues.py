@@ -241,6 +241,9 @@ class AggregatedValuesService(StdService):
         record = event.record
 
         for field in self.fields:
+
+            self.logger.loginf(f"field: {field}")
+
             name = field["name"]
 
             self.logger.loginf(f"Processing field '{name}'...")
