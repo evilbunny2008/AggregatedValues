@@ -253,7 +253,7 @@ class AggregatedValuesService(StdService):
             try:
                 time_span = self.timespan_provider.get_timespan(field_dict, record['dateTime'])
 
-                self.logger.loginf(f"time_span: {time_span")
+                self.logger.loginf(f"time_span: {time_span}")
 
                 record[field] = \
                     weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)[2]
