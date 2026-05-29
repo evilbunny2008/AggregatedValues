@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# nano swap/lock files
+*.swp
+
 # C extensions
 *.so
 
