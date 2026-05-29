@@ -181,12 +181,7 @@ class AggregatedValuesService(StdService):
             self.logger.loginf("Not enabled, exiting.")
             return
 
-        data_binding = service_dict.get('data_binding', 'wx_binding')
-
-        self.manager_dict = weewx.manager.get_manager_dict_from_config(config_dict, data_binding)
-
-        with weewx.manager.open_manager(self.manager_dict) as db_manager:
-            self.db_manager = db_manager
+        db_manager = self.engine.db_binder.get_manager(data_binding='data_binding', initialize=True)
 
         self.timespan_provider = TimeSpanProvider(engine.stn_info.week_start, int(service_dict.get("since_hour", 0)))
 
