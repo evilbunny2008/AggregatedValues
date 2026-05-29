@@ -181,7 +181,12 @@ class AggregatedValuesService(StdService):
             self.logger.loginf("Not enabled, exiting.")
             return
 
-        self.db_lookup = weewx.manager.DBBinder(config_dict).bind_default()
+        data_binding = service_dict.get('data_binding', 'wx_binding')
+
+        self.manager_dict = weewx.manager.get_manager_dict_from_config(config_dict, data_binding)
+
+        with weewx.manager.open_manager(self.manager_dict) as db_manager:
+            self.db_manager = db_manager
 
         self.timespan_provider = TimeSpanProvider(engine.stn_info.week_start, int(service_dict.get("since_hour", 0)))
 
@@ -247,13 +252,13 @@ class AggregatedValuesService(StdService):
 
             time_span = self.timespan_provider.get_timespan(field_dict, record['dateTime'])
 
-            self.logger.loginf(f"time_span: {time_span}")
+            self.logger.loginf(f"weewx.xtypes.get_aggregate({field_dict['observation']}, {time_span}, {field_dict['aggregation']}")
 
-            self.logger.loginf(weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_lookup))
+            self.logger.loginf(weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager))
 
             try:
                 record[field] = \
-                    weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_lookup)
+                    weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)
 
             except Exception as exception:
                 self.logger.logerr(f"Aggregation failed: {exception}")
