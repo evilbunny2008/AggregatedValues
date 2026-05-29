@@ -183,7 +183,6 @@ class AggregatedValuesService(StdService):
 
         data_binding = service_dict.get('data_binding', 'wx_binding')
 
-        #self.db_manager = self.engine.db_binder.get_manager(data_binding=data_binding, initialize=True)
         self.db_manager = self.engine.db_binder.get_manager(data_binding=data_binding)
 
         self.timespan_provider = TimeSpanProvider(engine.stn_info.week_start, int(service_dict.get("since_hour", 0)))
@@ -242,17 +241,9 @@ class AggregatedValuesService(StdService):
 
         for field in self.fields:
 
-            self.logger.loginf(f"field: {field}")
-
             field_dict = self.fields[field]
 
-            self.logger.loginf(f"field_dict: {field_dict}")
-
             time_span = self.timespan_provider.get_timespan(field_dict, record['dateTime'])
-
-            self.logger.loginf(f"weewx.xtypes.get_aggregate({field_dict['observation']}, {time_span}, {field_dict['aggregation']}, {self.db_manager})")
-
-            self.logger.loginf(weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager))
 
             try:
                 record[field] = \
