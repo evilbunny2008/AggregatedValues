@@ -254,7 +254,7 @@ class AggregatedValuesService(StdService):
                 time_span = self.timespan_provider.get_timespan(field_dict, record['dateTime'])
 
                 record[field] = \
-                    weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)
+                    weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)[2]
 
             except (weewx.CannotCalculate, weewx.UnknownAggregation, weewx.UnknownType) as exception:
                 self.logger.logerr(f"Aggregation failed: {exception}")
