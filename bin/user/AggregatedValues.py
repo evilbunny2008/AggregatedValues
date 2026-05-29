@@ -235,7 +235,7 @@ class AggregatedValuesService(StdService):
             fields[field] = field_dict
 
             if weewx.units.obs_group_dict.get(field) is None:
-                group = get_aggregate_group(field_dict['observation'])
+                group = weewx.units.obs_group_dict.get(field_dict['observation'])
                 if group:
                     weewx.units.obs_group_dict[field] = group
 
