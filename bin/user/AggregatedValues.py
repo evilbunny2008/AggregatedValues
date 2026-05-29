@@ -185,6 +185,9 @@ class AggregatedValuesService(StdService):
 
         self.manager_dict = weewx.manager.get_manager_dict_from_config(config_dict, data_binding)
 
+        with weewx.manager.open_manager(self.manager_dict) as db_manager:
+            self.db_manager = db_manager
+
         self.timespan_provider = TimeSpanProvider(engine.stn_info.week_start, int(service_dict.get("since_hour", 0)))
 
         self.fields = self.configure_fields(service_dict)
