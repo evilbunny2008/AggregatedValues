@@ -253,7 +253,7 @@ class AggregatedValuesService(StdService):
 
                 vt = weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)[0]
 
-                converted_vt = weewx.units.convertStd(vt, weewx.units.US)
+                converted_vt = weewx.units.convertStd(vt, weewx.US)
 
                 record[field] = converted_vt.value
 
