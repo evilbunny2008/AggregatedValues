@@ -82,10 +82,6 @@ class TimeSpanProvider:
         ''' Get a timespan for the hour. '''
         return weeutil.weeutil.archiveHoursAgoSpan(timestamp)
 
-    def last3hours(self, timestamp):
-        ''' Get a timespan for the past 3 hours. '''
-        return weeutil.weeutil.archiveHoursAgoSpan(timestamp, 3)
-
     def day(self, timestamp):
         ''' Get a timespan for the day. '''
         return weeutil.weeutil.archiveDaySpan(timestamp)
@@ -105,6 +101,10 @@ class TimeSpanProvider:
     def year(self, timestamp):
         ''' Get a timespan for the running year. '''
         return weeutil.weeutil.archiveYearSpan(timestamp)
+
+    def last3hours(self, timestamp):
+        ''' Get a timespan for the past 3 hours. '''
+        return TimeSpan(timestamp - 10800, timestamp - 10800)
 
     def last24hours(self, timestamp):
         ''' Get a timespan for the last 24 hours. '''
