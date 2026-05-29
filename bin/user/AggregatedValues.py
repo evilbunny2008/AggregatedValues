@@ -10,6 +10,7 @@ Generate aggregated values for other extensions
 import configobj
 import logging
 import os
+import weecfg
 import weeutil
 import weewx
 
