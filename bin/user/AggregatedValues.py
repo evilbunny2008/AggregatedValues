@@ -255,6 +255,8 @@ class AggregatedValuesService(StdService):
 
                 self.logger.loginf(f"time_span: {time_span}")
 
+                self.logger.loginf(weewx.xtypes.get_aggregate("outTemp", time_span, "diff", self.db_manager))
+
                 record[field] = \
                     weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)
 
