@@ -233,7 +233,6 @@ class AggregatedValuesService(StdService):
                 continue
 
             fields[field] = field_dict
-            fields[field]['name'] = field
 
         return fields
 
@@ -244,15 +243,13 @@ class AggregatedValuesService(StdService):
 
             self.logger.loginf(f"field: {field}")
 
-            name = field["name"]
-
-            self.logger.loginf(f"Processing field '{name}'...")
+            field_dict = self.fields[field]
 
             try:
-                time_span = self.timespan_provider.get_timespan(field, record['dateTime'])
+                time_span = self.timespan_provider.get_timespan(field_dict, record['dateTime'])
 
-                record[name] = \
-                    weewx.xtypes.get_aggregate(field['observation'], time_span, field['aggregation'], self.db_manager)
+                record[field] = \
+                    weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)
 
             except (weewx.CannotCalculate, weewx.UnknownAggregation, weewx.UnknownType) as exception:
                 self.logger.logerr(f"Aggregation failed: {exception}")
