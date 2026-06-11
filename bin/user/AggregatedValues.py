@@ -234,11 +234,6 @@ class AggregatedValuesService(StdService):
 
             fields[field] = field_dict
 
-            if weewx.units.obs_group_dict.get(field) is None:
-                group = weewx.units.obs_group_dict.get(field_dict['observation'])
-                if group:
-                    weewx.units.obs_group_dict[field] = group
-
         return fields
 
     def new_archive_record(self, event):
@@ -246,15 +241,21 @@ class AggregatedValuesService(StdService):
 
         for field in self.fields:
 
+            self.logger.logdbg(f"field: {field}")
+
             try:
                 field_dict = self.fields[field]
 
                 time_span = self.timespan_provider.get_timespan(field_dict, record['dateTime'])
 
-                vt = weewx.xtypes.get_aggregate(field_dict['observation'], time_span, field_dict['aggregation'], self.db_manager)
+                agg = field_dict['aggregation']
+                vt = weewx.xtypes.get_aggregate(field_dict['observation'], time_span, agg, self.db_manager)
+
+                if weewx.units.obs_group_dict.get(field) is None:
+                    weewx.units.obs_group_dict[field] = vt.group
 
                 converted_vt = weewx.units.convertStd(vt, weewx.US)
-
+                self.logger.logdbg(f"converted_vt: {converted_vt}")
                 record[field] = converted_vt.value
 
             except Exception as exception:
