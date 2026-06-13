@@ -11,6 +11,7 @@ import configobj
 import copy
 import logging
 import os
+import pickle
 import weecfg
 import weeutil
 import weewx
@@ -45,6 +46,17 @@ class Logger:
     def logerr(self, msg):
         """ log error messages """
         self.log.error(msg)
+
+class StrorageClass():
+
+    def __init__(self):
+
+        self.dt = datetime.now()
+        self.yesterday = None
+        self.month = None
+        self.last_month = None
+        self.year = None
+        self.last_year = None
 
 class TimeSpanProvider:
     ''' Manage the timespans. '''
@@ -178,6 +190,8 @@ class AggregatedValuesService(StdService):
 
         self.version = "1.0.0"
 
+        self.storage = None
+
         self.logger = Logger()
 
         self.process_config_dict(config_dict)
@@ -201,13 +215,39 @@ class AggregatedValuesService(StdService):
 
         self.fields = self.configure_fields(service_dict)
 
-        self.yesterday = None
-        self.month = None
-        self.last_month = None
-        self.year = None
-        self.last_year = None
+        self.pickle_filename = "/etc/weewx/AggregatedValues.pkl"
+
+        self.load_pickle()
 
         self.bind(weewx.NEW_ARCHIVE_RECORD, self.new_archive_record)
+
+    def load_pickle(self):
+        self.logger.logdbg(f"Attempting to load cached data from {self.pickle_filename}")
+
+        if os.path.exists(self.pickle_filename):
+            try:
+                with open(self.pickle_filename, "rb") as f:
+
+                    ret = pickle.load(f)
+
+                    if isinstance(ret, StrorageClass):
+                        self.storage = ret
+
+            except Exception as e:
+                pass
+
+        if self.storage is None:
+            self.storage = StrorageClass()
+            self.save_pickle()
+
+    def save_pickle(self):
+        self.logger.logdbg(f"Attempting to save cached data to {self.pickle_filename}")
+
+        try:
+            with open(self.pickle_filename, "wb") as f:
+                pickle.dump(self.storage, f)
+        except Exception as e:
+            self.logger.logerr(f" Error!, e: {str(e)}")
 
     def process_config_dict(self, config_dict):
 
@@ -307,24 +347,27 @@ class AggregatedValuesService(StdService):
 
         dt = datetime.fromtimestamp(record['dateTime'])
 
-        if self.yesterday is None or (dt.hour == 0 and dt.minute == 0):
-            self.yesterday = self.generate_records(record['dateTime'], "yesterday")
-            self.month = self.generate_records(record['dateTime'], "month")
-            self.year = self.generate_records(record['dateTime'], "year")
+        if self.storage.yesterday is None or (dt.hour == 0 and dt.minute == 0):
+            self.storage.yesterday = self.generate_records(record['dateTime'], "yesterday")
+            self.storage.month = self.generate_records(record['dateTime'], "month")
+            self.storage.year = self.generate_records(record['dateTime'], "year")
 
-        if self.last_month is None or (dt.hour == 0 and dt.minute == 0 and dt.day == 1):
-            self.last_month = self.generate_records(record['dateTime'], "last_month")
+        if self.storage.last_month is None or (dt.hour == 0 and dt.minute == 0 and dt.day == 1):
+            self.storage.last_month = self.generate_records(record['dateTime'], "last_month")
 
-        if self.last_year is None or (dt.hour == 0 and dt.minute == 0 and dt.day == 1 and dt.month == 1):
-            self.last_year = self.generate_records(record['dateTime'], "last_year")
+        if self.storage.last_year is None or (dt.hour == 0 and dt.minute == 0 and dt.day == 1 and dt.month == 1):
+            self.storage.last_year = self.generate_records(record['dateTime'], "last_year")
 
         new_record = self.generate_records(record['dateTime'])
 
-        for records in [new_record, self.yesterday, self.month, self.last_month, self.year, self.last_year]:
+        for records in [new_record, self.storage.yesterday, self.storage.month, self.storage.last_month, self.storage.year, self.storage.last_year]:
             keys = records.keys()
             for key in keys:
                 record[key] = records[key]
 
+        self.save_pickle()
+
     def shutDown(self):
         """Run when an engine shutdown is requested."""
+        self.save_pickle()
         self.logger.loginf("Shutdown initiatead")
