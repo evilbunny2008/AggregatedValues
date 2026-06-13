@@ -170,8 +170,12 @@ class TimeSpanProvider:
             timespan = weeutil.weeutil.archiveWeekSpan(timestamp, startOfWeek=self.week_start)
         elif to_bool(agg_dict.get("month", False)):
             timespan = weeutil.weeutil.archiveMonthSpan(timestamp)
+        elif to_bool(agg_dict.get("last_month", False)):
+            timespan = weeutil.weeutil.archiveMonthSpan(timestamp, 1)
         elif to_bool(agg_dict.get("year", False)):
             timespan = weeutil.weeutil.archiveYearSpan(timestamp)
+        elif to_bool(agg_dict.get("last_year", False)):
+            timespan = weeutil.weeutil.archiveYearSpan(timestamp, 1)
         else:
             timespan = weeutil.weeutil.archiveDaySpan(timestamp)
 
@@ -306,12 +310,16 @@ class AggregatedValuesService(StdService):
                 field_dict = copy.deepcopy(self.fields[field])
 
                 period = field_dict['period']
+                agg = field_dict['aggregation']
                 #self.logger.logdbg(f"period: {period}")
 
                 output_name = field
                 if timeperiod is not None:
                     if period == "day":
                         field_dict['period'] = timeperiod
+                        output_name = timeperiod + "_" + field
+                    elif period == "since":
+                        agg[timeperiod] = True
                         output_name = timeperiod + "_" + field
                     else:
                         continue
@@ -322,17 +330,15 @@ class AggregatedValuesService(StdService):
 
                 time_span = self.timespan_provider.get_timespan(field_dict, dateTime)
 
-                agg = field_dict['aggregation']
-
                 vt = weewx.xtypes.get_aggregate(field_dict['observation'], time_span, agg, self.db_manager)
 
                 if weewx.units.obs_group_dict.get(output_name) is None:
+                    self.logger.loginf(f"{output_name}: {vt.group}")
                     weewx.units.obs_group_dict[output_name] = vt.group
 
                 converted_vt = weewx.units.convertStd(vt, weewx.US)
 
-                #if timeperiod is not None:
-                #    self.logger.logdbg(f"converted_vt: {converted_vt}")
+                self.logger.logdbg(f"converted_vt: {converted_vt}")
 
                 new_record[output_name] = converted_vt.value
 
@@ -351,12 +357,15 @@ class AggregatedValuesService(StdService):
             self.storage.yesterday = self.generate_records(record['dateTime'], "yesterday")
             self.storage.month = self.generate_records(record['dateTime'], "month")
             self.storage.year = self.generate_records(record['dateTime'], "year")
+            self.storage.dt = dt
 
         if self.storage.last_month is None or (dt.hour == 0 and dt.minute == 0 and dt.day == 1):
             self.storage.last_month = self.generate_records(record['dateTime'], "last_month")
+            self.storage.dt = dt
 
         if self.storage.last_year is None or (dt.hour == 0 and dt.minute == 0 and dt.day == 1 and dt.month == 1):
             self.storage.last_year = self.generate_records(record['dateTime'], "last_year")
+            self.storage.dt = dt
 
         new_record = self.generate_records(record['dateTime'])
 
