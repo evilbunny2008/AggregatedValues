@@ -204,7 +204,7 @@ class AggregatedValuesService(StdService):
 
         service_dict = config_dict.get('AggregatedValues', {})
 
-        self.logger.logdbg(f"service_dict is {service_dict}")
+        #self.logger.logdbg(f"service_dict is {service_dict}")
 
         self.enable = to_bool(service_dict.get('enable', True))
         if not self.enable:
@@ -311,22 +311,23 @@ class AggregatedValuesService(StdService):
 
                 period = field_dict['period']
                 agg = field_dict['aggregation']
-                #self.logger.logdbg(f"period: {period}")
 
                 output_name = field
                 if timeperiod is not None:
+                    self.logger.logdbg(f"field: {field}")
+                    self.logger.logdbg(f"timeperiod: {timeperiod}")
+                    self.logger.logdbg(f"period: {period}")
+
                     if period == "day":
                         field_dict['period'] = timeperiod
                         output_name = timeperiod + "_" + field
+                        self.logger.logdbg(f"output_name: {output_name}")
                     elif period == "since":
-                        agg[timeperiod] = True
+                        field_dict[timeperiod] = True
                         output_name = timeperiod + "_" + field
+                        self.logger.logdbg(f"output_name: {output_name}")
                     else:
                         continue
-
-                    #self.logger.logdbg(f"field: {field}")
-                    #self.logger.logdbg(f"period: {period}")
-                    #self.logger.logdbg(f"output_name: {output_name}")
 
                 time_span = self.timespan_provider.get_timespan(field_dict, dateTime)
 
@@ -338,7 +339,7 @@ class AggregatedValuesService(StdService):
 
                 converted_vt = weewx.units.convertStd(vt, weewx.US)
 
-                self.logger.logdbg(f"converted_vt: {converted_vt}")
+                #self.logger.logdbg(f"converted_vt: {converted_vt}")
 
                 new_record[output_name] = converted_vt.value
 
