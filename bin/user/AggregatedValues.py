@@ -8,12 +8,14 @@ Generate aggregated values for other extensions
 """
 
 import configobj
+import copy
 import logging
 import os
 import weecfg
 import weeutil
 import weewx
 
+from datetime import datetime
 from weeutil.weeutil import to_bool, TimeSpan
 from weewx.engine import StdService
 
@@ -54,7 +56,9 @@ class TimeSpanProvider:
             'yesterday': self.yesterday,
             'week': self.week,
             'month': self.month,
+            'last_month': self.last_month,
             'year': self.year,
+            'last_year': self.last_year,
             'last3hours': self.last3hours,
             'last24hours': self.last24hours,
             'last7days': self.last7days,
@@ -98,9 +102,17 @@ class TimeSpanProvider:
         ''' Get a timespan for the running month. '''
         return weeutil.weeutil.archiveMonthSpan(timestamp)
 
+    def last_month(self, timestamp):
+        ''' Get a timespan for the previous month. '''
+        return weeutil.weeutil.archiveMonthSpan(timestamp, 1)
+
     def year(self, timestamp):
         ''' Get a timespan for the running year. '''
         return weeutil.weeutil.archiveYearSpan(timestamp)
+
+    def last_year(self, timestamp):
+        ''' Get a timespan for the previous year. '''
+        return weeutil.weeutil.archiveYearSpan(timestamp, 1)
 
     def last3hours(self, timestamp):
         ''' Get a timespan for the past 3 hours. '''
@@ -189,6 +201,12 @@ class AggregatedValuesService(StdService):
 
         self.fields = self.configure_fields(service_dict)
 
+        self.yesterday = None
+        self.month = None
+        self.last_month = None
+        self.year = None
+        self.last_year = None
+
         self.bind(weewx.NEW_ARCHIVE_RECORD, self.new_archive_record)
 
     def process_config_dict(self, config_dict):
@@ -236,30 +254,76 @@ class AggregatedValuesService(StdService):
 
         return fields
 
-    def new_archive_record(self, event):
-        record = event.record
+    def generate_records(self, dateTime, timeperiod=None):
+
+        new_record = {}
+
+        #self.logger.logdbg(f"timeperiod: {timeperiod}")
 
         for field in self.fields:
 
-            self.logger.logdbg(f"field: {field}")
-
             try:
-                field_dict = self.fields[field]
+                field_dict = copy.deepcopy(self.fields[field])
 
-                time_span = self.timespan_provider.get_timespan(field_dict, record['dateTime'])
+                period = field_dict['period']
+                #self.logger.logdbg(f"period: {period}")
+
+                output_name = field
+                if timeperiod is not None:
+                    if period == "day":
+                        field_dict['period'] = timeperiod
+                        output_name = timeperiod + "_" + field
+                    else:
+                        continue
+
+                    #self.logger.logdbg(f"field: {field}")
+                    #self.logger.logdbg(f"period: {period}")
+                    #self.logger.logdbg(f"output_name: {output_name}")
+
+                time_span = self.timespan_provider.get_timespan(field_dict, dateTime)
 
                 agg = field_dict['aggregation']
+
                 vt = weewx.xtypes.get_aggregate(field_dict['observation'], time_span, agg, self.db_manager)
 
-                if weewx.units.obs_group_dict.get(field) is None:
-                    weewx.units.obs_group_dict[field] = vt.group
+                if weewx.units.obs_group_dict.get(output_name) is None:
+                    weewx.units.obs_group_dict[output_name] = vt.group
 
                 converted_vt = weewx.units.convertStd(vt, weewx.US)
-                self.logger.logdbg(f"converted_vt: {converted_vt}")
-                record[field] = converted_vt.value
+
+                #if timeperiod is not None:
+                #    self.logger.logdbg(f"converted_vt: {converted_vt}")
+
+                new_record[output_name] = converted_vt.value
 
             except Exception as exception:
                 self.logger.logerr(f"Aggregation failed: {exception}")
+
+        return new_record
+
+
+    def new_archive_record(self, event):
+        record = event.record
+
+        dt = datetime.fromtimestamp(record['dateTime'])
+
+        if self.yesterday is None or (dt.hour == 0 and dt.minute == 0):
+            self.yesterday = self.generate_records(record['dateTime'], "yesterday")
+            self.month = self.generate_records(record['dateTime'], "month")
+            self.year = self.generate_records(record['dateTime'], "year")
+
+        if self.last_month is None or (dt.hour == 0 and dt.minute == 0 and dt.day == 1):
+            self.last_month = self.generate_records(record['dateTime'], "last_month")
+
+        if self.last_year is None or (dt.hour == 0 and dt.minute == 0 and dt.day == 1 and dt.month == 1):
+            self.last_year = self.generate_records(record['dateTime'], "last_year")
+
+        new_record = self.generate_records(record['dateTime'])
+
+        for records in [new_record, self.yesterday, self.month, self.last_month, self.year, self.last_year]:
+            keys = records.keys()
+            for key in keys:
+                record[key] = records[key]
 
     def shutDown(self):
         """Run when an engine shutdown is requested."""
