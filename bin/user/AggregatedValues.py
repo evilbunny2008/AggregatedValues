@@ -12,6 +12,7 @@ import copy
 import logging
 import os
 import pickle
+import traceback
 import weecfg
 import weeutil
 import weewx
@@ -31,7 +32,7 @@ def resolve_obs_group(observation, agg_type):
     - Time-based agg types (mintime, maxtime, …) override to group_time.
     """
     # agg_group maps agg types that produce a different group than the obs itself
-    # e.g. {'mintime': 'group_time', 'maxtime': 'group_time', 'count': 'group_count', ...}
+    # e.g. {"mintime": "group_time", "maxtime": "group_time", "count": "group_count", ...}
     override_group = weewx.units.agg_group.get(agg_type)
     if override_group is not None:
         return override_group
@@ -45,10 +46,10 @@ def setup_logging(logging_level, config_dict):
     if logging_level:
         weewx.debug = logging_level
 
-    weeutil.logger.setup('AggregatedValues', config_dict)
+    weeutil.logger.setup("AggregatedValues", config_dict)
 
 class Logger:
-    ''' Manage the logging '''
+    """ Manage the logging """
     def __init__(self):
         self.log = logging.getLogger(__name__)
 
@@ -76,24 +77,25 @@ class StrorageClass():
         self.last_year = None
 
 class TimeSpanProvider:
-    ''' Manage the timespans. '''
-    def __init__(self, week_start, since_hour=0):
+    """ Manage the timespans. """
+    def __init__(self, logger, week_start, since_hour, first_timestamp):
+        self.logger = logger
         self.week_start = week_start
         self.period_timespans = {
-            'hour': self.hour,
-            'day': self.day,
-            'yesterday': self.yesterday,
-            'week': self.week,
-            'month': self.month,
-            'last_month': self.last_month,
-            'year': self.year,
-            'last_year': self.last_year,
-            'last3hours': self.last3hours,
-            'last24hours': self.last24hours,
-            'last7days': self.last7days,
-            'last31days': self.last31days,
-            'last366days': self.last366days,
-            'since': self.since,
+            "hour": self.hour,
+            "day": self.day,
+            "yesterday": self.yesterday,
+            "week": self.week,
+            "month": self.month,
+            "last_month": self.last_month,
+            "year": self.year,
+            "last_year": self.last_year,
+            "last3hours": self.last3hours,
+            "last24hours": self.last24hours,
+            "last7days": self.last7days,
+            "last31days": self.last31days,
+            "last366days": self.last366days,
+            "since": self.since,
         }
 
         if 0 < since_hour > 23:
@@ -101,8 +103,13 @@ class TimeSpanProvider:
 
         self.since_seconds = since_hour * 3600
 
+        if first_timestamp is None or first_timestamp <= 0:
+            raise ValueError("first_timestamp needs to be > 0")
+
+        self.first_timestamp = first_timestamp
+
     def get_timespan(self, agg_dict, timestamp):
-        ''' Get a timespan for the interval and timstamp. '''
+        """ Get a timespan for the interval and timstamp. """
 
         interval = agg_dict["period"]
 
@@ -112,55 +119,55 @@ class TimeSpanProvider:
         return self.period_timespans[interval](timestamp)
 
     def hour(self, timestamp):
-        ''' Get a timespan for the hour. '''
+        """ Get a timespan for the hour. """
         return weeutil.weeutil.archiveHoursAgoSpan(timestamp)
 
     def day(self, timestamp):
-        ''' Get a timespan for the day. '''
+        """ Get a timespan for the day. """
         return weeutil.weeutil.archiveDaySpan(timestamp)
 
     def yesterday(self, timestamp):
-        ''' Get a timespan for yesterday. '''
+        """ Get a timespan for yesterday. """
         return weeutil.weeutil.archiveDaySpan(timestamp, 1)
 
     def week(self, timestamp):
-        ''' Get a timespan for the running week. '''
+        """ Get a timespan for the running week. """
         return weeutil.weeutil.archiveWeekSpan(timestamp, startOfWeek=self.week_start)
 
     def month(self, timestamp):
-        ''' Get a timespan for the running month. '''
+        """ Get a timespan for the running month. """
         return weeutil.weeutil.archiveMonthSpan(timestamp)
 
     def last_month(self, timestamp):
-        ''' Get a timespan for the previous month. '''
+        """ Get a timespan for the previous month. """
         return weeutil.weeutil.archiveMonthSpan(timestamp, 1)
 
     def year(self, timestamp):
-        ''' Get a timespan for the running year. '''
+        """ Get a timespan for the running year. """
         return weeutil.weeutil.archiveYearSpan(timestamp)
 
     def last_year(self, timestamp):
-        ''' Get a timespan for the previous year. '''
+        """ Get a timespan for the previous year. """
         return weeutil.weeutil.archiveYearSpan(timestamp, 1)
 
     def last3hours(self, timestamp):
-        ''' Get a timespan for the past 3 hours. '''
+        """ Get a timespan for the past 3 hours. """
         return TimeSpan(timestamp - 10800, timestamp)
 
     def last24hours(self, timestamp):
-        ''' Get a timespan for the last 24 hours. '''
+        """ Get a timespan for the last 24 hours. """
         return TimeSpan(timestamp - 86400, timestamp)
 
     def last7days(self, timestamp):
-        ''' Get a timespan for the last 7 days. '''
+        """ Get a timespan for the last 7 days. """
         return self._last_n_days(7, timestamp)
 
     def last31days(self, timestamp):
-        ''' Get a timespan for the last 31 days. '''
+        """ Get a timespan for the last 31 days. """
         return self._last_n_days(31, timestamp)
 
     def last366days(self, timestamp):
-        ''' Get a timespan for the last 366 days. '''
+        """ Get a timespan for the last 366 days. """
         return self._last_n_days(366, timestamp)
 
     def _last_n_days(self, days, timestamp):
@@ -171,38 +178,57 @@ class TimeSpanProvider:
         """ Shift the start/stop time by since_seconds """
         return TimeSpan(current_timespan.start + self.since_seconds, current_timespan.stop + self.since_seconds)
 
-    def since(self, agg_dict, timestamp, orig_timestamp=None):
-        """ Get a TimeSpan for offset of since_hours from midnight """
+    def check_timespan(self, timespan, timestamp, time_to_subtract):
+        """ Make sure the timespan includes the timestamp """
 
-        if orig_timestamp is None:
-            if to_bool(agg_dict.get("yesterday", False)):
-                timestamp -= 86400
-                orig_timestamp = timestamp
-            else:
-                orig_timestamp = timestamp
-
-        if to_bool(agg_dict.get("yesterday", False)):
-            timespan = weeutil.weeutil.archiveDaySpan(timestamp)
-        elif to_bool(agg_dict.get("week", False)):
-            timespan = weeutil.weeutil.archiveWeekSpan(timestamp, startOfWeek=self.week_start)
-        elif to_bool(agg_dict.get("month", False)):
-            timespan = weeutil.weeutil.archiveMonthSpan(timestamp)
-        elif to_bool(agg_dict.get("last_month", False)):
-            timespan = weeutil.weeutil.archiveMonthSpan(timestamp, 1)
-        elif to_bool(agg_dict.get("year", False)):
-            timespan = weeutil.weeutil.archiveYearSpan(timestamp)
-        elif to_bool(agg_dict.get("last_year", False)):
-            timespan = weeutil.weeutil.archiveYearSpan(timestamp, 1)
-        else:
-            timespan = weeutil.weeutil.archiveDaySpan(timestamp)
-
-        if self.since_seconds > 0:
-            timespan = self.shift_timespan(timespan)
-
-        if timespan.start <= orig_timestamp <= timespan.stop:
+        if timespan.start <= timestamp <= timespan.stop:
             return timespan
 
-        return self.since(agg_dict, timestamp - 86400, orig_timestamp)
+        timespan = TimeSpan(timespan.start - time_to_subtract, timespan.stop - time_to_subtract)
+
+        if timespan.stop < timestamp:
+            return self.check_timespan(timespan, timestamp, -time_to_subtract)
+
+        if timespan.start <= timestamp <= timespan.stop:
+            return timespan
+
+        return self.check_timespan(timespan, timestamp, time_to_subtract)
+
+    def since(self, agg_dict, timestamp):
+        """ Get a TimeSpan for offset of since_hours from midnight """
+
+        time_to_subtract = 86400
+        if to_bool(agg_dict.get("last_month", False)):
+            time_to_subtract = 2419200
+        elif to_bool(agg_dict.get("last_year", False)):
+            time_to_subtract = 31536000
+
+        if to_bool(agg_dict.get("yesterday", False)):
+            timespan = self.yesterday(timestamp)
+        elif to_bool(agg_dict.get("week", False)):
+            timespan = self.week(timestamp)
+        elif to_bool(agg_dict.get("month", False)):
+            timespan = self.month(timestamp)
+        elif to_bool(agg_dict.get("last_month", False)):
+            timespan = self.last_month(timestamp)
+        elif to_bool(agg_dict.get("year", False)):
+            timespan = self.year(timestamp)
+        elif to_bool(agg_dict.get("last_year", False)):
+            timespan = self.last_year(timestamp)
+        else:
+            timespan = self.day(timestamp)
+
+        if self.since_seconds == 0:
+            return timespan
+
+        if to_bool(agg_dict.get("yesterday", False)) or \
+            to_bool(agg_dict.get("last_month", False)) or \
+            to_bool(agg_dict.get("last_year", False)):
+            timestamp -= time_to_subtract
+
+        timespan = self.shift_timespan(timespan)
+
+        return self.check_timespan(timespan, timestamp, time_to_subtract)
 
 class AggregatedValuesService(StdService):
     """ A service to publish WeeWX loop and/or archive data to MQTT. """
@@ -219,20 +245,22 @@ class AggregatedValuesService(StdService):
 
         self.logger.loginf(f"AggregatedValues version: {self.version}")
 
-        service_dict = config_dict.get('AggregatedValues', {})
+        service_dict = config_dict.get("AggregatedValues", {})
 
         #self.logger.logdbg(f"service_dict is {service_dict}")
 
-        self.enable = to_bool(service_dict.get('enable', True))
+        self.enable = to_bool(service_dict.get("enable", True))
         if not self.enable:
             self.logger.loginf("Not enabled, exiting.")
             return
 
-        data_binding = service_dict.get('data_binding', 'wx_binding')
+        data_binding = service_dict.get("data_binding", "wx_binding")
 
         self.db_manager = self.engine.db_binder.get_manager(data_binding=data_binding)
 
-        self.timespan_provider = TimeSpanProvider(engine.stn_info.week_start, int(service_dict.get("since_hour", 0)))
+        self.timespan_provider = TimeSpanProvider(self.logger, engine.stn_info.week_start, \
+                                                  int(service_dict.get("since_hour", 0)), \
+                                                  self.db_manager.firstGoodStamp())
 
         self.fields = self.configure_fields(service_dict)
 
@@ -295,21 +323,21 @@ class AggregatedValuesService(StdService):
                 continue
 
             field_dict = service_dict.get(field, {})
-            ignore = to_bool(field_dict.get('ignore', False))
+            ignore = to_bool(field_dict.get("ignore", False))
             if ignore:
                 continue
 
-            observation = field_dict.get('observation')
+            observation = field_dict.get("observation")
             if observation is None:
                 self.logger.logerr(f"Error! Field '{field}' doesn't have an observation set, skipping...")
                 continue
 
-            aggregation = field_dict.get('aggregation')
+            aggregation = field_dict.get("aggregation")
             if aggregation is None:
                 self.logger.logerr(f"Error! Field '{field}' doesn't have an aggregation set, skipping...")
                 continue
 
-            if field_dict.get('period') is None:
+            if field_dict.get("period") is None:
                 self.logger.logerr(f"Error! Field '{field}' doesn't have a period set, skipping...")
                 continue
 
@@ -318,25 +346,23 @@ class AggregatedValuesService(StdService):
                 self.logger.logerr(f"Error! Field '{field}' has observation '{observation}' and aggregation '{aggregation}' but the group type can't be resolved, skipping...")
                 continue
 
-            self.logger.loginf(f"{observation} with {aggregation} resolved to {resolved_group}")
+            #self.logger.logdbg(f"{observation} with {aggregation} resolved to {resolved_group}")
 
             for timeperiod in [None, "yesterday", "month", "last_month", "year", "last_year"]:
                 output_name = field
                 if timeperiod is not None:
-                    self.logger.logdbg(f"field: {field}")
-                    self.logger.logdbg(f"timeperiod: {timeperiod}")
-                    self.logger.logdbg(f"period: {period}")
-
+                    period = field_dict.get("period")
                     if period == "day":
-                        field_dict['period'] = timeperiod
                         output_name = timeperiod + "_" + field
-                        self.logger.logdbg(f"output_name: {output_name}")
+                        #self.logger.logdbg(f"output_name: {output_name}")
                     elif period == "since":
-                        field_dict[timeperiod] = True
                         output_name = timeperiod + "_" + field
-                        self.logger.logdbg(f"output_name: {output_name}")
+                        #self.logger.logdbg(f"output_name: {output_name}")
+                    else:
+                        continue
 
                 if weewx.units.obs_group_dict.get(output_name) is None:
+                    #self.logger.logdbg(f"Set '{output_name}' to be in {resolved_group}")
                     weewx.units.obs_group_dict[output_name] = resolved_group
 
             fields[field] = field_dict
@@ -347,36 +373,30 @@ class AggregatedValuesService(StdService):
 
         new_record = {}
 
-        #self.logger.logdbg(f"timeperiod: {timeperiod}")
-
         for field in self.fields:
 
             try:
                 field_dict = copy.deepcopy(self.fields[field])
 
-                period = field_dict['period']
-                agg = field_dict['aggregation']
+                period = field_dict["period"]
+                agg = field_dict["aggregation"]
 
                 output_name = field
                 if timeperiod is not None:
-                    self.logger.logdbg(f"field: {field}")
-                    self.logger.logdbg(f"timeperiod: {timeperiod}")
-                    self.logger.logdbg(f"period: {period}")
-
                     if period == "day":
-                        field_dict['period'] = timeperiod
+                        field_dict["period"] = timeperiod
                         output_name = timeperiod + "_" + field
-                        self.logger.logdbg(f"output_name: {output_name}")
+                        #self.logger.logdbg(f"output_name: {output_name}")
                     elif period == "since":
                         field_dict[timeperiod] = True
                         output_name = timeperiod + "_" + field
-                        self.logger.logdbg(f"output_name: {output_name}")
+                        #self.logger.logdbg(f"output_name: {output_name}")
                     else:
                         continue
 
                 time_span = self.timespan_provider.get_timespan(field_dict, dateTime)
 
-                vt = weewx.xtypes.get_aggregate(field_dict['observation'], time_span, agg, self.db_manager)
+                vt = weewx.xtypes.get_aggregate(field_dict["observation"], time_span, agg, self.db_manager)
 
                 converted_vt = weewx.units.convertStd(vt, weewx.US)
 
@@ -385,7 +405,8 @@ class AggregatedValuesService(StdService):
                 new_record[output_name] = converted_vt.value
 
             except Exception as exception:
-                self.logger.logerr(f"Aggregation failed: {exception}")
+                tb = traceback.format_exc()
+                self.logger.logerr(f"Aggregation failed: {tb}")
 
         return new_record
 
@@ -393,23 +414,23 @@ class AggregatedValuesService(StdService):
     def new_archive_record(self, event):
         record = event.record
 
-        dt = datetime.fromtimestamp(record['dateTime'])
+        dt = datetime.fromtimestamp(record["dateTime"])
 
-        if self.storage.yesterday is None or (dt.hour == 0 and dt.minute == 0):
-            self.storage.yesterday = self.generate_records(record['dateTime'], "yesterday")
-            self.storage.month = self.generate_records(record['dateTime'], "month")
-            self.storage.year = self.generate_records(record['dateTime'], "year")
+        if self.storage.yesterday is None or dt.date() != self.storage.dt.date():
+            self.storage.yesterday = self.generate_records(record["dateTime"], "yesterday")
+            self.storage.month = self.generate_records(record["dateTime"], "month")
+            self.storage.year = self.generate_records(record["dateTime"], "year")
             self.storage.dt = dt
 
-        if self.storage.last_month is None or (dt.hour == 0 and dt.minute == 0 and dt.day == 1):
-            self.storage.last_month = self.generate_records(record['dateTime'], "last_month")
+        if self.storage.last_month is None or dt.month != self.storage.dt.month:
+            self.storage.last_month = self.generate_records(record["dateTime"], "last_month")
             self.storage.dt = dt
 
-        if self.storage.last_year is None or (dt.hour == 0 and dt.minute == 0 and dt.day == 1 and dt.month == 1):
-            self.storage.last_year = self.generate_records(record['dateTime'], "last_year")
+        if self.storage.last_year is None or dt.year != self.storage.dt.year:
+            self.storage.last_year = self.generate_records(record["dateTime"], "last_year")
             self.storage.dt = dt
 
-        new_record = self.generate_records(record['dateTime'])
+        new_record = self.generate_records(record["dateTime"])
 
         for records in [new_record, self.storage.yesterday, self.storage.month, self.storage.last_month, self.storage.year, self.storage.last_year]:
             keys = records.keys()
