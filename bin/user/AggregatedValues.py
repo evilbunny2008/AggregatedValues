@@ -22,6 +22,23 @@ from weewx.engine import StdService
 
 VERSION = "1.0.0"
 
+def resolve_obs_group(observation, agg_type):
+    """
+    Return the unit group for an aggregated observation, mirroring
+    the logic weewx.xtypes.get_aggregate uses internally.
+
+    - Most agg types (sum, avg, min, max, …) inherit the observation's group.
+    - Time-based agg types (mintime, maxtime, …) override to group_time.
+    """
+    # agg_group maps agg types that produce a different group than the obs itself
+    # e.g. {'mintime': 'group_time', 'maxtime': 'group_time', 'count': 'group_count', ...}
+    override_group = weewx.units.agg_group.get(agg_type)
+    if override_group is not None:
+        return override_group
+
+    # Fall back to the observation's own group
+    return weewx.units.obs_group_dict.get(observation)
+
 # log = logging.getLogger(__name__)
 def setup_logging(logging_level, config_dict):
     """ Setup logging for running in standalone mode."""
@@ -282,17 +299,47 @@ class AggregatedValuesService(StdService):
             if ignore:
                 continue
 
-            if field_dict.get('observation') is None:
+            observation = field_dict.get('observation')
+            if observation is None:
                 self.logger.logerr(f"Error! Field '{field}' doesn't have an observation set, skipping...")
                 continue
 
-            if field_dict.get('aggregation') is None:
+            aggregation = field_dict.get('aggregation')
+            if aggregation is None:
                 self.logger.logerr(f"Error! Field '{field}' doesn't have an aggregation set, skipping...")
                 continue
 
             if field_dict.get('period') is None:
                 self.logger.logerr(f"Error! Field '{field}' doesn't have a period set, skipping...")
                 continue
+
+            resolved_group = resolve_obs_group(observation, aggregation)
+            if resolved_group is None:
+                self.logger.logerr(f"Error! Field '{field}' has observation '{observation}' and aggregation '{aggregation}' but the group type can't be resolved, skipping...")
+                continue
+
+            self.logger.loginf(f"{observation} with {aggregation} resolved to {resolved_group}")
+
+            for timeperiod in ["", "yesterday", "month", "last_month", "year", "last_year"]:
+                output_name = field
+                if timeperiod is not None:
+                    self.logger.logdbg(f"field: {field}")
+                    self.logger.logdbg(f"timeperiod: {timeperiod}")
+                    self.logger.logdbg(f"period: {period}")
+
+                    if period == "day":
+                        field_dict['period'] = timeperiod
+                        output_name = timeperiod + "_" + field
+                        self.logger.logdbg(f"output_name: {output_name}")
+                    elif period == "since":
+                        field_dict[timeperiod] = True
+                        output_name = timeperiod + "_" + field
+                        self.logger.logdbg(f"output_name: {output_name}")
+                    else:
+                        continue
+
+                if weewx.units.obs_group_dict.get(output_name) is None:
+                    weewx.units.obs_group_dict[output_name] = resolved_group
 
             fields[field] = field_dict
 
@@ -332,10 +379,6 @@ class AggregatedValuesService(StdService):
                 time_span = self.timespan_provider.get_timespan(field_dict, dateTime)
 
                 vt = weewx.xtypes.get_aggregate(field_dict['observation'], time_span, agg, self.db_manager)
-
-                if weewx.units.obs_group_dict.get(output_name) is None:
-                    self.logger.loginf(f"{output_name}: {vt.group}")
-                    weewx.units.obs_group_dict[output_name] = vt.group
 
                 converted_vt = weewx.units.convertStd(vt, weewx.US)
 
