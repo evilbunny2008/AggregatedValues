@@ -320,7 +320,7 @@ class AggregatedValuesService(StdService):
 
             self.logger.loginf(f"{observation} with {aggregation} resolved to {resolved_group}")
 
-            for timeperiod in ["", "yesterday", "month", "last_month", "year", "last_year"]:
+            for timeperiod in [None, "yesterday", "month", "last_month", "year", "last_year"]:
                 output_name = field
                 if timeperiod is not None:
                     self.logger.logdbg(f"field: {field}")
@@ -335,8 +335,6 @@ class AggregatedValuesService(StdService):
                         field_dict[timeperiod] = True
                         output_name = timeperiod + "_" + field
                         self.logger.logdbg(f"output_name: {output_name}")
-                    else:
-                        continue
 
                 if weewx.units.obs_group_dict.get(output_name) is None:
                     weewx.units.obs_group_dict[output_name] = resolved_group
