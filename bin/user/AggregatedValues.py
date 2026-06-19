@@ -203,7 +203,9 @@ class TimeSpanProvider:
         elif to_bool(agg_dict.get("last_year", False)):
             time_to_subtract = 31536000
 
-        if to_bool(agg_dict.get("yesterday", False)):
+        if to_bool(agg_dict.get("day", False)):
+            timespan = self.day(timestamp)
+        elif to_bool(agg_dict.get("yesterday", False)):
             timespan = self.yesterday(timestamp)
         elif to_bool(agg_dict.get("week", False)):
             timespan = self.week(timestamp)
@@ -348,7 +350,7 @@ class AggregatedValuesService(StdService):
 
             #self.logger.logdbg(f"{observation} with {aggregation} resolved to {resolved_group}")
 
-            for timeperiod in [None, "yesterday", "month", "last_month", "year", "last_year"]:
+            for timeperiod in ["day", "yesterday", "month", "last_month", "year", "last_year"]:
                 output_name = field
                 if timeperiod is not None:
                     period = field_dict.get("period")
@@ -369,7 +371,7 @@ class AggregatedValuesService(StdService):
 
         return fields
 
-    def generate_records(self, dateTime, timeperiod=None):
+    def generate_records(self, dateTime, timeperiod="day"):
 
         new_record = {}
 
@@ -430,9 +432,9 @@ class AggregatedValuesService(StdService):
             self.storage.last_year = self.generate_records(record["dateTime"], "last_year")
             self.storage.dt = dt
 
-        new_record = self.generate_records(record["dateTime"])
+        today = self.generate_records(record["dateTime"])
 
-        for records in [new_record, self.storage.yesterday, self.storage.month, self.storage.last_month, self.storage.year, self.storage.last_year]:
+        for records in [today, self.storage.yesterday, self.storage.month, self.storage.last_month, self.storage.year, self.storage.last_year]:
             keys = records.keys()
             for key in keys:
                 record[key] = records[key]
