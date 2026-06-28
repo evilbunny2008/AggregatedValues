@@ -406,6 +406,13 @@ class AggregatedValuesService(StdService):
 
                 new_record[output_name] = converted_vt.value
 
+                if period == "day" and field_dict["observation"] == "wind" and agg.endswith("dir"):
+                    if converted_vt.value is not None:
+                        vh = weewx.units.ValueHelper(converted_vt)
+                        new_record[output_name + "_compass"] = vh.ordinal_compass()
+                    else:
+                        new_record[output_name + "_compass"] = "N/A"
+
             except Exception as exception:
                 tb = traceback.format_exc()
                 self.logger.logerr(f"Aggregation failed: {tb}")
