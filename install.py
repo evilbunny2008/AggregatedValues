@@ -15,7 +15,7 @@ import configobj
 
 from weecfg.extension import ExtensionInstaller
 
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 
 CONFIG = """
 [AggregatedValues]
@@ -58,7 +58,7 @@ class AggregatedValuesInstaller(ExtensionInstaller):
             'version': VERSION,
             'name': 'AggregatedValues',
             # add a leading space, so that long versions does not run into the description
-            'description': ' Calculate aggregated values that other plugins can then use without duplicating functionality and database lookups',
+            'description': ' Calculate aggregated values that other extensions can then use without duplicating functionality and database lookups',
             'author': "John Smith",
             'author_email': "deltafoxtro256+AggregatedValues@gmail.com",
             'files': [('bin/user', ['bin/user/AggregatedValues.py'])]
