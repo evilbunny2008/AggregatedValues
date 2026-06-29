@@ -382,6 +382,7 @@ class AggregatedValuesService(StdService):
 
                 period = field_dict["period"]
                 agg = field_dict["aggregation"]
+                conversion_type = field_dict.get("conversion_type")
 
                 output_name = field
                 if timeperiod is not None:
@@ -412,6 +413,18 @@ class AggregatedValuesService(StdService):
                         new_record[output_name + "_compass"] = vh.ordinal_compass()
                     else:
                         new_record[output_name + "_compass"] = "N/A"
+
+                if conversion_type == "integer":
+                    if new_record[output_name] is not None:
+                        new_record[output_name] = to_int(new_record[output_name])
+                    else:
+                        new_record[output_name] = 0
+
+                elif conversion_type == "float":
+                    if new_record[output_name] is not None:
+                        new_record[output_name] = to_float(new_record[output_name])
+                    else:
+                        new_record[output_name] = 0
 
             except Exception as exception:
                 tb = traceback.format_exc()
