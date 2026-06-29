@@ -18,7 +18,7 @@ import weeutil
 import weewx
 
 from datetime import datetime
-from weeutil.weeutil import to_bool, TimeSpan
+from weeutil.weeutil import to_bool, to_float, to_int, TimeSpan
 from weewx.engine import StdService
 
 VERSION = "1.0.0"
@@ -410,9 +410,9 @@ class AggregatedValuesService(StdService):
                 if period == "day" and field_dict["observation"] == "wind" and agg.endswith("dir"):
                     if converted_vt.value is not None:
                         vh = weewx.units.ValueHelper(converted_vt)
-                        new_record[output_name + "_compass"] = vh.ordinal_compass()
+                        new_record[output_name + "_str"] = vh.ordinal_compass()
                     else:
-                        new_record[output_name + "_compass"] = "N/A"
+                        new_record[output_name + "_str"] = "N/A"
 
                 if conversion_type == "integer":
                     if new_record[output_name] is not None:
