@@ -15,7 +15,7 @@ import configobj
 
 from weecfg.extension import ExtensionInstaller
 
-VERSION = "1.0.7"
+VERSION = "1.0.8"
 
 CONFIG = """
 [AggregatedValues]

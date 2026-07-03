@@ -220,6 +220,8 @@ class TimeSpanProvider:
         else:
             timespan = self.day(timestamp)
 
+        self.logger.loginf(f"Before timespan: {timespan}")
+
         if self.since_seconds == 0:
             return timespan
 
@@ -229,6 +231,8 @@ class TimeSpanProvider:
             timestamp -= time_to_subtract
 
         timespan = self.shift_timespan(timespan)
+
+        self.logger.loginf(f"After timespan: {timespan}")
 
         return self.check_timespan(timespan, timestamp, time_to_subtract)
 
@@ -249,6 +253,8 @@ class AggregatedValuesService(StdService):
 
         service_dict = config_dict.get("AggregatedValues", {})
 
+        self.since_hour = int(service_dict.get("since_hour", 0))
+
         #self.logger.logdbg(f"service_dict is {service_dict}")
 
         self.enable = to_bool(service_dict.get("enable", True))
@@ -261,7 +267,7 @@ class AggregatedValuesService(StdService):
         self.db_manager = self.engine.db_binder.get_manager(data_binding=data_binding)
 
         self.timespan_provider = TimeSpanProvider(self.logger, engine.stn_info.week_start, \
-                                                  int(service_dict.get("since_hour", 0)), \
+                                                  self.since_hour, \
                                                   self.db_manager.firstGoodStamp())
 
         self.fields = self.configure_fields(service_dict)
@@ -437,18 +443,24 @@ class AggregatedValuesService(StdService):
         record = event.record
 
         dt = datetime.fromtimestamp(record["dateTime"])
+        self.logger.loginf(f"dt: {dt}")
 
-        if self.storage.yesterday is None or dt.date() != self.storage.dt.date():
+        #self.storage.yesterday = self.generate_records(record["dateTime"], "yesterday")
+
+        if (dt.hour == self.since_hour and dt.minute == 0) or dt.date() != self.storage.dt.date() or \
+            self.storage.yesterday is None:
             self.storage.yesterday = self.generate_records(record["dateTime"], "yesterday")
             self.storage.month = self.generate_records(record["dateTime"], "month")
             self.storage.year = self.generate_records(record["dateTime"], "year")
             self.storage.dt = dt
 
-        if self.storage.last_month is None or dt.month != self.storage.dt.month:
+        if (dt.hour == self.since_hour and dt.minute == 0) or dt.month != self.storage.dt.month or \
+            self.storage.last_month is None:
             self.storage.last_month = self.generate_records(record["dateTime"], "last_month")
             self.storage.dt = dt
 
-        if self.storage.last_year is None or dt.year != self.storage.dt.year:
+        if (dt.hour == self.since_hour and dt.minute == 0) or dt.year != self.storage.dt.year or \
+            self.storage.last_year is None:
             self.storage.last_year = self.generate_records(record["dateTime"], "last_year")
             self.storage.dt = dt
 
