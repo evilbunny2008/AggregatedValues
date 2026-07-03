@@ -291,7 +291,7 @@ class AggregatedValuesService(StdService):
                         self.storage = ret
 
             except Exception as e:
-                pass
+                self.storage = None
 
         if self.storage is None:
             self.storage = StrorageClass()
@@ -438,6 +438,18 @@ class AggregatedValuesService(StdService):
 
         return new_record
 
+    def effective_date(dt):
+
+        cutoff = time(self.since_hour)
+
+        if dt.time() >= cutoff:
+            return dt.date()
+        else:
+            return dt.date() - timedelta(days=1)
+
+    def should_reset(dt):
+
+        return dt.date() != self.storage.dt.date() or dt.date() != self.effective_date(dt)
 
     def new_archive_record(self, event):
         record = event.record
@@ -447,20 +459,19 @@ class AggregatedValuesService(StdService):
 
         #self.storage.yesterday = self.generate_records(record["dateTime"], "yesterday")
 
-        if (dt.hour == self.since_hour and dt.minute == 0) or dt.date() != self.storage.dt.date() or \
-            self.storage.yesterday is None:
+        should_reset = self.should_reset(dt)
+
+        if should_reset or self.storage.yesterday is None:
             self.storage.yesterday = self.generate_records(record["dateTime"], "yesterday")
             self.storage.month = self.generate_records(record["dateTime"], "month")
             self.storage.year = self.generate_records(record["dateTime"], "year")
             self.storage.dt = dt
 
-        if (dt.hour == self.since_hour and dt.minute == 0) or dt.month != self.storage.dt.month or \
-            self.storage.last_month is None:
+        if should_reset or self.storage.last_month is None:
             self.storage.last_month = self.generate_records(record["dateTime"], "last_month")
             self.storage.dt = dt
 
-        if (dt.hour == self.since_hour and dt.minute == 0) or dt.year != self.storage.dt.year or \
-            self.storage.last_year is None:
+        if should_reset or self.storage.last_year is None:
             self.storage.last_year = self.generate_records(record["dateTime"], "last_year")
             self.storage.dt = dt
 
