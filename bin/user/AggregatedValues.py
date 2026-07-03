@@ -17,7 +17,7 @@ import weecfg
 import weeutil
 import weewx
 
-from datetime import datetime
+from datetime import datetime, time
 from weeutil.weeutil import to_bool, to_float, to_int, TimeSpan
 from weewx.engine import StdService
 
