@@ -438,7 +438,7 @@ class AggregatedValuesService(StdService):
 
         return new_record
 
-    def effective_date(dt):
+    def effective_date(self, dt):
 
         cutoff = time(self.since_hour)
 
@@ -447,7 +447,7 @@ class AggregatedValuesService(StdService):
         else:
             return dt.date() - timedelta(days=1)
 
-    def should_reset(dt):
+    def should_reset(self, dt):
 
         return dt.date() != self.storage.dt.date() or dt.date() != self.effective_date(dt)
 
