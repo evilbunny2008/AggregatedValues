@@ -17,7 +17,7 @@ import weecfg
 import weeutil
 import weewx
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from weeutil.weeutil import to_bool, to_float, to_int, TimeSpan
 from weewx.engine import StdService
 
@@ -39,6 +39,15 @@ def resolve_obs_group(observation, agg_type):
 
     # Fall back to the observation's own group
     return weewx.units.obs_group_dict.get(observation)
+
+def effective_date(dt, since_hour):
+
+    cutoff = time(since_hour)
+
+    if dt.time() >= cutoff:
+        return dt
+    else:
+        return dt - timedelta(days=1)
 
 # log = logging.getLogger(__name__)
 def setup_logging(logging_level, config_dict):
@@ -65,16 +74,19 @@ class Logger:
         """ log error messages """
         self.log.error(msg)
 
-class StrorageClass():
+class StrorageClassV2():
 
     def __init__(self):
 
+        self.since_hour = 0
         self.dt = datetime.now()
+        self.eff_dt = effective_date(self.dt, self.since_hour)
         self.yesterday = None
         self.month = None
         self.last_month = None
         self.year = None
         self.last_year = None
+        self.alltime = None
 
 class TimeSpanProvider:
     """ Manage the timespans. """
@@ -96,6 +108,7 @@ class TimeSpanProvider:
             "last31days": self.last31days,
             "last366days": self.last366days,
             "since": self.since,
+            "alltime": self.alltime,
         }
 
         if 0 < since_hour > 23:
@@ -170,9 +183,13 @@ class TimeSpanProvider:
         """ Get a timespan for the last 366 days. """
         return self._last_n_days(366, timestamp)
 
+    def alltime(self, timestamp):
+        """ Get a timespan for the last 366 days. """
+        return self._last_n_days(36600, timestamp)
+
     def _last_n_days(self, days, timestamp):
         """ Get a TimeSpan for the last N days """
-        return TimeSpan(time.mktime((datetime.date.fromtimestamp(timestamp) - datetime.timedelta(days=days)).timetuple()), timestamp)
+        return TimeSpan(timestamp - days * 86400, timestamp)
 
     def shift_timespan(self, current_timespan):
         """ Shift the start/stop time by since_seconds """
@@ -217,6 +234,8 @@ class TimeSpanProvider:
             timespan = self.year(timestamp)
         elif to_bool(agg_dict.get("last_year", False)):
             timespan = self.last_year(timestamp)
+        elif to_bool(agg_dict.get("alltime", False)):
+            return self.alltime(timestamp)
         else:
             timespan = self.day(timestamp)
 
@@ -272,6 +291,8 @@ class AggregatedValuesService(StdService):
 
         self.fields = self.configure_fields(service_dict)
 
+        #self.logger.loginf(f"self.fields: {self.fields}")
+
         self.pickle_filename = "/etc/weewx/AggregatedValues.pkl"
 
         self.load_pickle()
@@ -287,14 +308,14 @@ class AggregatedValuesService(StdService):
 
                     ret = pickle.load(f)
 
-                    if isinstance(ret, StrorageClass):
+                    if isinstance(ret, StrorageClassV2):
                         self.storage = ret
 
             except Exception as e:
                 self.storage = None
 
         if self.storage is None:
-            self.storage = StrorageClass()
+            self.storage = StrorageClassV2()
             self.save_pickle()
 
     def save_pickle(self):
@@ -356,7 +377,7 @@ class AggregatedValuesService(StdService):
 
             #self.logger.logdbg(f"{observation} with {aggregation} resolved to {resolved_group}")
 
-            for timeperiod in ["day", "yesterday", "month", "last_month", "year", "last_year"]:
+            for timeperiod in ["day", "yesterday", "month", "last_month", "year", "last_year", "alltime"]:
                 output_name = field
                 if timeperiod is not None:
                     period = field_dict.get("period")
@@ -438,48 +459,62 @@ class AggregatedValuesService(StdService):
 
         return new_record
 
-    def effective_date(self, dt):
+    def should_reset(self, dt, eff_dt):
 
-        cutoff = time(self.since_hour)
+        self.logger.loginf(f"dt: {dt.date()}")
+        self.logger.loginf(f"self.storage.dt: {self.storage.dt.date()}")
 
-        if dt.time() >= cutoff:
-            return dt.date()
-        else:
-            return dt.date() - timedelta(days=1)
+        self.logger.loginf(f"eff_dt: {eff_dt.date()}")
+        self.logger.loginf(f"self.storage.eff_dt: {self.storage.eff_dt.date()}")
 
-    def should_reset(self, dt):
-
-        return dt.date() != self.storage.dt.date() or dt.date() != self.effective_date(dt)
+        return dt.date() != self.storage.dt.date() or effective_date(dt, self.since_hour).date() != self.storage.eff_dt.date()
 
     def new_archive_record(self, event):
         record = event.record
 
         dt = datetime.fromtimestamp(record["dateTime"])
-        self.logger.loginf(f"dt: {dt}")
+        self.logger.loginf(f"dt: {dt.date()}")
+        eff_dt = effective_date(dt, self.since_hour)
+        self.logger.loginf(f"eff_dt: {eff_dt.date()}")
 
         #self.storage.yesterday = self.generate_records(record["dateTime"], "yesterday")
 
-        should_reset = self.should_reset(dt)
+        should_reset = self.should_reset(dt, eff_dt)
 
         if should_reset or self.storage.yesterday is None:
             self.storage.yesterday = self.generate_records(record["dateTime"], "yesterday")
-            self.storage.month = self.generate_records(record["dateTime"], "month")
-            self.storage.year = self.generate_records(record["dateTime"], "year")
             self.storage.dt = dt
+            self.storage.eff_dt = eff_dt
+
+        if should_reset or self.storage.month is None:
+            self.storage.month = self.generate_records(record["dateTime"], "month")
+            self.storage.dt = dt
+            self.storage.eff_dt = eff_dt
 
         if should_reset or self.storage.last_month is None:
             self.storage.last_month = self.generate_records(record["dateTime"], "last_month")
             self.storage.dt = dt
+            self.storage.eff_dt = eff_dt
+
+        if should_reset or self.storage.year is None:
+            self.storage.year = self.generate_records(record["dateTime"], "year")
+            self.storage.dt = dt
+            self.storage.eff_dt = eff_dt
 
         if should_reset or self.storage.last_year is None:
             self.storage.last_year = self.generate_records(record["dateTime"], "last_year")
             self.storage.dt = dt
+            self.storage.eff_dt = eff_dt
+
+        if should_reset or self.storage.alltime is None:
+            self.storage.alltime = self.generate_records(record["dateTime"], "alltime")
+            self.storage.dt = dt
+            self.storage.eff_dt = eff_dt
 
         today = self.generate_records(record["dateTime"])
 
-        for records in [today, self.storage.yesterday, self.storage.month, self.storage.last_month, self.storage.year, self.storage.last_year]:
-            keys = records.keys()
-            for key in keys:
+        for records in [today, self.storage.yesterday, self.storage.month, self.storage.last_month, self.storage.year, self.storage.last_year, self.storage.alltime]:
+            for key in records.keys():
                 record[key] = records[key]
 
         self.save_pickle()
