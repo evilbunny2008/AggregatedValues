@@ -116,9 +116,6 @@ class TimeSpanProvider:
 
         self.since_seconds = since_hour * 3600
 
-        if first_timestamp is None or first_timestamp <= 0:
-            raise ValueError("first_timestamp needs to be > 0")
-
         self.first_timestamp = first_timestamp
 
     def get_timespan(self, agg_dict, timestamp):

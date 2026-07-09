@@ -28,7 +28,7 @@ CONFIG = """
     # since_hour = 9
 
     # This can be any name. For example: rainSumDay, outTempMinHour, etc
-    [[REPLACE_ME]]
+    [[outTemp]]
         # Turn aggregates on and off.
         # Default is true.
         ignore = true
