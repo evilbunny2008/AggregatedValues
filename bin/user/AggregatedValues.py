@@ -280,7 +280,7 @@ class AggregatedValuesService(StdService):
             self.logger.loginf("Not enabled, exiting.")
             return
 
-        data_binding = service_dict.get("data_binding", "wx_binding_sqlite")
+        data_binding = service_dict.get("data_binding", "wx_binding")
 
         firstGoodStamp = self.engine.db_binder.get_manager(data_binding=data_binding).firstGoodStamp()
 
