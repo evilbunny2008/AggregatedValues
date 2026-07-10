@@ -263,6 +263,8 @@ class AggregatedValuesService(StdService):
 
         self.logger = Logger()
 
+        self.engine = engine
+
         self.config_dict = config_dict
 
         self.process_config_dict(config_dict)
@@ -280,9 +282,11 @@ class AggregatedValuesService(StdService):
             if tmp is not None:
                 binding = tmp
 
-        self.manager_dict = weewx.manager.get_manager_dict_from_config(config_dict, binding)
+        binding = "wx_binding_sqlite"
 
-        manager = self.engine.db_binder.get_manager(data_binding=self.binding)
+        self.logger.loginf(f"Binding set to {binding}")
+
+        self.manager_dict = weewx.manager.get_manager_dict_from_config(config_dict, binding)
 
         #self.logger.logdbg(f"service_dict is {service_dict}")
 
@@ -294,8 +298,6 @@ class AggregatedValuesService(StdService):
         self.fields = self.configure_fields(service_dict)
 
         #self.logger.loginf(f"self.fields: {self.fields}")
-
-        self.logger.loginf(f"Binding set to {self.binding}")
 
         self.pickle_filename = "/etc/weewx/AggregatedValues.pkl"
 
@@ -405,9 +407,8 @@ class AggregatedValuesService(StdService):
     def generate_records(self, dateTime, timeperiod="day"):
 
         new_record = {}
-
         with weewx.manager.open_manager(self.manager_dict) as manager:
-            timespan_provider = TimeSpanProvider(self.logger, engine.stn_info.week_start, \
+            timespan_provider = TimeSpanProvider(self.logger, self.engine.stn_info.week_start, \
                                                  self.since_hour, manager.firstGoodStamp())
 
             for field in self.fields:
