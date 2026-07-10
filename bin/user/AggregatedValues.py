@@ -273,6 +273,17 @@ class AggregatedValuesService(StdService):
 
         self.since_hour = int(service_dict.get("since_hour", 0))
 
+        binding = "wx_binding"
+        StdArchive = self.config_dict.get("StdArchive")
+        if StdArchive is not None:
+            tmp = StdArchive.get("data_binding")
+            if tmp is not None:
+                binding = tmp
+
+        self.manager_dict = weewx.manager.get_manager_dict_from_config(config_dict, binding)
+
+        manager = self.engine.db_binder.get_manager(data_binding=self.binding)
+
         #self.logger.logdbg(f"service_dict is {service_dict}")
 
         self.enable = to_bool(service_dict.get("enable", True))
@@ -280,34 +291,17 @@ class AggregatedValuesService(StdService):
             self.logger.loginf("Not enabled, exiting.")
             return
 
-        self.manager = self.get_manager()
-        self.firstGoodStamp = self.manager.firstGoodStamp()
-
-        self.timespan_provider = TimeSpanProvider(self.logger, engine.stn_info.week_start, \
-                                                  self.since_hour, self.firstGoodStamp)
-
         self.fields = self.configure_fields(service_dict)
 
         #self.logger.loginf(f"self.fields: {self.fields}")
+
+        self.logger.loginf(f"Binding set to {self.binding}")
 
         self.pickle_filename = "/etc/weewx/AggregatedValues.pkl"
 
         self.load_pickle()
 
         self.bind(weewx.NEW_ARCHIVE_RECORD, self.new_archive_record)
-
-    def get_manager(self):
-
-        binding = "wx_binding"
-        StdArchive = self.config_dict.get("StdArchive")
-        if StdArchive is not None:
-            tmp = StdArchive.get("data_binding")
-            if tmp is not None:
-                binding = tmp
-                self.logger.loginf(f"Binding set to {binding}")
-
-        #binding = "wx_binding_sqlite"
-        return self.engine.db_binder.get_manager(data_binding=binding)
 
     def load_pickle(self):
         self.logger.logdbg(f"Attempting to load cached data from {self.pickle_filename}")
@@ -412,7 +406,10 @@ class AggregatedValuesService(StdService):
 
         new_record = {}
 
-        if self.manager is not None:
+        with weewx.manager.open_manager(self.manager_dict) as manager:
+            timespan_provider = TimeSpanProvider(self.logger, engine.stn_info.week_start, \
+                                                 self.since_hour, manager.firstGoodStamp())
+
             for field in self.fields:
 
                 try:
@@ -435,9 +432,9 @@ class AggregatedValuesService(StdService):
                         else:
                             continue
 
-                    time_span = self.timespan_provider.get_timespan(field_dict, dateTime)
+                    time_span = timespan_provider.get_timespan(field_dict, dateTime)
 
-                    vt = weewx.xtypes.get_aggregate(field_dict["observation"], time_span, agg, self.manager)
+                    vt = weewx.xtypes.get_aggregate(field_dict["observation"], time_span, agg, manager)
 
                     converted_vt = weewx.units.convertStd(vt, weewx.US)
 
