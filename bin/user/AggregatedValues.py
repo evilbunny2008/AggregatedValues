@@ -280,12 +280,14 @@ class AggregatedValuesService(StdService):
             self.logger.loginf("Not enabled, exiting.")
             return
 
-        data_binding = service_dict.get("data_binding", "wx_binding")
-
-        firstGoodStamp = self.engine.db_binder.get_manager(data_binding=data_binding).firstGoodStamp()
+        manager = self.get_manager()
+        if manager is not None:
+            self.firstGoodStamp = manager.firstGoodStamp()
+        else:
+            self.firstGoodStamp = 0
 
         self.timespan_provider = TimeSpanProvider(self.logger, engine.stn_info.week_start, \
-                                                  self.since_hour, firstGoodStamp)
+                                                  self.since_hour, self.firstGoodStamp)
 
         self.fields = self.configure_fields(service_dict)
 
@@ -296,6 +298,18 @@ class AggregatedValuesService(StdService):
         self.load_pickle()
 
         self.bind(weewx.NEW_ARCHIVE_RECORD, self.new_archive_record)
+
+    def get_manager(self):
+
+        binding = "wx_binding"
+        StdArchive = self.config_dict.get("StdArchive")
+        if StdArchive is not None:
+            tmp = StdArchive.get("data_binding")
+            if tmp is not None:
+                binding = tmp
+
+        with weewx.manager.DBBinder(config_dict) as db_binder:
+            return db_binder.get_manager(binding)
 
     def load_pickle(self):
         self.logger.logdbg(f"Attempting to load cached data from {self.pickle_filename}")
@@ -400,7 +414,9 @@ class AggregatedValuesService(StdService):
 
         new_record = {}
 
-        with weewx.manager.open_manager_with_config(self.config_dict, 'wx_binding') as db_manager:
+        db_manager = self.get_manager()
+
+        if db_manager is not None:
             for field in self.fields:
 
                 try:
