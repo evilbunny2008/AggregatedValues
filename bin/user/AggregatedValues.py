@@ -280,8 +280,8 @@ class AggregatedValuesService(StdService):
             self.logger.loginf("Not enabled, exiting.")
             return
 
-        manager = self.get_manager()
-        self.firstGoodStamp = manager.firstGoodStamp()
+        self.manager = self.get_manager()
+        self.firstGoodStamp = self.manager.firstGoodStamp()
 
         self.timespan_provider = TimeSpanProvider(self.logger, engine.stn_info.week_start, \
                                                   self.since_hour, self.firstGoodStamp)
@@ -412,9 +412,7 @@ class AggregatedValuesService(StdService):
 
         new_record = {}
 
-        db_manager = self.get_manager()
-
-        if db_manager is not None:
+        if self.manager is not None:
             for field in self.fields:
 
                 try:
@@ -439,7 +437,7 @@ class AggregatedValuesService(StdService):
 
                     time_span = self.timespan_provider.get_timespan(field_dict, dateTime)
 
-                    vt = weewx.xtypes.get_aggregate(field_dict["observation"], time_span, agg, db_manager)
+                    vt = weewx.xtypes.get_aggregate(field_dict["observation"], time_span, agg, self.manager)
 
                     converted_vt = weewx.units.convertStd(vt, weewx.US)
 
