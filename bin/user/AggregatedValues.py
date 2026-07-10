@@ -282,7 +282,7 @@ class AggregatedValuesService(StdService):
             if tmp is not None:
                 binding = tmp
 
-        binding = "wx_binding_sqlite"
+        #binding = "wx_binding_sqlite"
 
         self.logger.loginf(f"Binding set to {binding}")
 
