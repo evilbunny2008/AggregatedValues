@@ -281,10 +281,7 @@ class AggregatedValuesService(StdService):
             return
 
         manager = self.get_manager()
-        if manager is not None:
-            self.firstGoodStamp = manager.firstGoodStamp()
-        else:
-            self.firstGoodStamp = 0
+        self.firstGoodStamp = manager.firstGoodStamp()
 
         self.timespan_provider = TimeSpanProvider(self.logger, engine.stn_info.week_start, \
                                                   self.since_hour, self.firstGoodStamp)
@@ -307,9 +304,10 @@ class AggregatedValuesService(StdService):
             tmp = StdArchive.get("data_binding")
             if tmp is not None:
                 binding = tmp
+                self.logger.loginf(f"Binding set to {binding}")
 
-        with weewx.manager.DBBinder(config_dict) as db_binder:
-            return db_binder.get_manager(binding)
+        binding = "wx_binding_sqlite"
+        return self.engine.db_binder.get_manager(data_binding=binding)
 
     def load_pickle(self):
         self.logger.logdbg(f"Attempting to load cached data from {self.pickle_filename}")
