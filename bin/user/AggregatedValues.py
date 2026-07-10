@@ -306,7 +306,7 @@ class AggregatedValuesService(StdService):
                 binding = tmp
                 self.logger.loginf(f"Binding set to {binding}")
 
-        binding = "wx_binding_sqlite"
+        #binding = "wx_binding_sqlite"
         return self.engine.db_binder.get_manager(data_binding=binding)
 
     def load_pickle(self):
