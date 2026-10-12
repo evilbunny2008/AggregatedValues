@@ -286,7 +286,7 @@ class AggregatedValuesService(StdService):
 
         self.logger.loginf(f"Binding set to {binding}")
 
-        self.manager_dict = weewx.manager.get_manager_dict_from_config(config_dict, binding)
+        self.binding = binding
 
         #self.logger.logdbg(f"service_dict is {service_dict}")
 
@@ -407,64 +407,66 @@ class AggregatedValuesService(StdService):
     def generate_records(self, dateTime, timeperiod="day"):
 
         new_record = {}
-        with weewx.manager.open_manager(self.manager_dict) as manager:
-            timespan_provider = TimeSpanProvider(self.logger, self.engine.stn_info.week_start, \
-                                                 self.since_hour, manager.firstGoodStamp())
+        # Use the engine's shared, cached manager rather than opening a new
+        # connection. The engine owns it, so it must not be closed here.
+        manager = self.engine.db_binder.get_manager(self.binding)
+        timespan_provider = TimeSpanProvider(self.logger, self.engine.stn_info.week_start, \
+                                             self.since_hour, manager.firstGoodStamp())
 
-            for field in self.fields:
+        for field in self.fields:
 
-                try:
-                    field_dict = copy.deepcopy(self.fields[field])
+            try:
+                field_dict = copy.deepcopy(self.fields[field])
 
-                    period = field_dict["period"]
-                    agg = field_dict["aggregation"]
-                    conversion_type = field_dict.get("conversion_type")
+                period = field_dict["period"]
+                agg = field_dict["aggregation"]
+                conversion_type = field_dict.get("conversion_type")
 
-                    output_name = field
-                    if timeperiod is not None:
-                        if period == "day":
-                            field_dict["period"] = timeperiod
-                            output_name = timeperiod + "_" + field
-                            #self.logger.logdbg(f"output_name: {output_name}")
-                        elif period == "since":
-                            field_dict[timeperiod] = True
-                            output_name = timeperiod + "_" + field
-                            #self.logger.logdbg(f"output_name: {output_name}")
-                        else:
-                            continue
+                output_name = field
+                if timeperiod is not None:
+                    if period == "day":
+                        field_dict["period"] = timeperiod
+                        output_name = timeperiod + "_" + field
+                        #self.logger.logdbg(f"output_name: {output_name}")
+                    elif period == "since":
+                        field_dict[timeperiod] = True
+                        output_name = timeperiod + "_" + field
+                        #self.logger.logdbg(f"output_name: {output_name}")
+                    else:
+                        continue
 
-                    time_span = timespan_provider.get_timespan(field_dict, dateTime)
+                time_span = timespan_provider.get_timespan(field_dict, dateTime)
 
-                    vt = weewx.xtypes.get_aggregate(field_dict["observation"], time_span, agg, manager)
+                vt = weewx.xtypes.get_aggregate(field_dict["observation"], time_span, agg, manager)
 
-                    converted_vt = weewx.units.convertStd(vt, weewx.US)
+                converted_vt = weewx.units.convertStd(vt, weewx.US)
 
-                    #self.logger.logdbg(f"converted_vt: {converted_vt}")
+                #self.logger.logdbg(f"converted_vt: {converted_vt}")
 
-                    new_record[output_name] = converted_vt.value
+                new_record[output_name] = converted_vt.value
 
-                    if period == "day" and field_dict["observation"] == "wind" and agg.endswith("dir"):
-                        if converted_vt.value is not None:
-                            vh = weewx.units.ValueHelper(converted_vt)
-                            new_record[output_name + "_str"] = vh.ordinal_compass()
-                        else:
-                            new_record[output_name + "_str"] = "N/A"
+                if period == "day" and field_dict["observation"] == "wind" and agg.endswith("dir"):
+                    if converted_vt.value is not None:
+                        vh = weewx.units.ValueHelper(converted_vt)
+                        new_record[output_name + "_str"] = vh.ordinal_compass()
+                    else:
+                        new_record[output_name + "_str"] = "N/A"
 
-                    if conversion_type == "integer":
-                        if new_record[output_name] is not None:
-                            new_record[output_name] = to_int(new_record[output_name])
-                        else:
-                            new_record[output_name] = 0
+                if conversion_type == "integer":
+                    if new_record[output_name] is not None:
+                        new_record[output_name] = to_int(new_record[output_name])
+                    else:
+                        new_record[output_name] = 0
 
-                    elif conversion_type == "float":
-                        if new_record[output_name] is not None:
-                            new_record[output_name] = to_float(new_record[output_name])
-                        else:
-                            new_record[output_name] = 0
+                elif conversion_type == "float":
+                    if new_record[output_name] is not None:
+                        new_record[output_name] = to_float(new_record[output_name])
+                    else:
+                        new_record[output_name] = 0
 
-                except Exception as exception:
-                    tb = traceback.format_exc()
-                    self.logger.logerr(f"Aggregation failed: {tb}")
+            except Exception as exception:
+                tb = traceback.format_exc()
+                self.logger.logerr(f"Aggregation failed: {tb}")
 
         return new_record
 
