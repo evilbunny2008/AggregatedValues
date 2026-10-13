@@ -299,7 +299,13 @@ class AggregatedValuesService(StdService):
 
         #self.logger.loginf(f"self.fields: {self.fields}")
 
-        self.pickle_filename = "/etc/weewx/AggregatedValues.pkl"
+        cache_dir = service_dict.get("cache_dir", None)
+        if cache_dir is None:
+            cache_dir = os.path.join(config_dict.get("WEEWX_ROOT", "/etc/weewx"), "AggregatedValues")
+        os.makedirs(cache_dir, exist_ok=True)
+
+        self.pickle_filename = os.path.join(cache_dir, "cache.pkl")
+        self.logger.loginf(f"Pickle filename set to {self.pickle_filename}")
 
         self.load_pickle()
 
