@@ -87,6 +87,7 @@ class StrorageClassV2():
         self.year = None
         self.last_year = None
         self.alltime = None
+        self.config = None
 
 class TimeSpanProvider:
     """ Manage the timespans. """
@@ -297,6 +298,13 @@ class AggregatedValuesService(StdService):
 
         self.fields = self.configure_fields(service_dict)
 
+        # Fingerprint of the config the cached values were generated from, so
+        # stale values are discarded when fields are added, removed or changed.
+        self.config_fingerprint = {
+            "since_hour": self.since_hour,
+            "fields": {field: dict(field_dict) for field, field_dict in self.fields.items()},
+        }
+
         #self.logger.loginf(f"self.fields: {self.fields}")
 
         cache_dir = service_dict.get("cache_dir", None)
@@ -321,13 +329,17 @@ class AggregatedValuesService(StdService):
                     ret = pickle.load(f)
 
                     if isinstance(ret, StrorageClassV2):
-                        self.storage = ret
+                        if getattr(ret, "config", None) == self.config_fingerprint:
+                            self.storage = ret
+                        else:
+                            self.logger.loginf("Config has changed since the cache was saved, discarding cached data")
 
             except Exception as e:
                 self.storage = None
 
         if self.storage is None:
             self.storage = StrorageClassV2()
+            self.storage.config = self.config_fingerprint
             self.save_pickle()
 
     def save_pickle(self):

@@ -18,7 +18,7 @@ import weewx
 
 from weecfg.extension import ExtensionInstaller
 
-VERSION = "1.1.2"
+VERSION = "1.1.3"
 
 CONFIG = """
 [AggregatedValues]
