@@ -96,6 +96,7 @@ class StrorageClassV2():
         self.last_year = None
         self.alltime = None
         self.config = None
+        self.unit_system = None
 
 class TimeSpanProvider:
     """ Manage the timespans. """
@@ -464,8 +465,8 @@ class AggregatedValuesService(StdService):
 
         return fields
 
-    def generate_records(self, dateTime, timeperiod="day"):
-        """ Returns the aggregated values, and whether any aggregation failed. """
+    def generate_records(self, dateTime, unit_system, timeperiod="day"):
+        """ Returns the aggregated values in unit_system, and whether any aggregation failed. """
 
         new_record = {}
         failed = False
@@ -508,7 +509,8 @@ class AggregatedValuesService(StdService):
 
                 vt = weewx.xtypes.get_aggregate(field_dict["observation"], time_span, agg, manager)
 
-                converted_vt = weewx.units.convertStd(vt, weewx.US)
+                # Values must be in the same unit system as the archive record they're added to
+                converted_vt = weewx.units.convertStd(vt, unit_system)
 
                 #self.logger.logdbg(f"converted_vt: {converted_vt}")
 
@@ -565,12 +567,19 @@ class AggregatedValuesService(StdService):
 
         should_reset = self.should_reset(dt, eff_dt)
 
+        # Cached values are in the unit system of the record they were generated for
+        unit_system = record["usUnits"]
+        if getattr(self.storage, "unit_system", None) != unit_system:
+            self.logger.loginf(f"Unit system changed to {weewx.units.unit_nicknames.get(unit_system, unit_system)}, recalculating cached data")
+            should_reset = True
+            self.storage.unit_system = unit_system
+
         # Fields with their own fixed period, eg last3hours, are calculated on every record
-        fixed_period, _ = self.generate_records(record["dateTime"], None)
+        fixed_period, _ = self.generate_records(record["dateTime"], unit_system, None)
         new_values = [fixed_period]
 
         if "day" in self.time_periods:
-            today, _ = self.generate_records(record["dateTime"])
+            today, _ = self.generate_records(record["dateTime"], unit_system)
             new_values.append(today)
 
         for timeperiod in TIME_PERIODS[1:]:
@@ -581,7 +590,7 @@ class AggregatedValuesService(StdService):
             values = getattr(self.storage, timeperiod)
 
             if should_reset or values is None:
-                values, failed = self.generate_records(record["dateTime"], timeperiod)
+                values, failed = self.generate_records(record["dateTime"], unit_system, timeperiod)
                 self.storage.dt = dt
                 self.storage.eff_dt = eff_dt
 
