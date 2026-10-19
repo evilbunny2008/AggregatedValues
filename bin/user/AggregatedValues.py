@@ -311,6 +311,8 @@ class AggregatedValuesService(StdService):
 
         self.logger.loginf(f"Configured fields: {', '.join(self.fields)}")
 
+        self.check_fields(config_dict)
+
         # Fingerprint of the config the cached values were generated from, so
         # stale values are discarded when fields are added, removed or changed.
         self.config_fingerprint = {
@@ -379,6 +381,31 @@ class AggregatedValuesService(StdService):
         except Exception as e:
             self.logger.logerr(f"Error! Unable to get extension version, e: {str(e)}")
 
+    def check_fields(self, config_dict):
+        """ Log an error for configurations that would silently add nothing to the archive record """
+
+        # Field sections outside [AggregatedValues], eg [outTemp_max] instead of [[outTemp_max]], or
+        # fields placed above the [AggregatedValues] line, end up in a different section
+        def find_misplaced(section, path):
+            for name in section.sections:
+                if path == [] and name == "AggregatedValues":
+                    continue
+                subsection = section[name]
+                if "observation" in subsection and "aggregation" in subsection and "period" in subsection:
+                    location = "".join(f"[{'[' * depth}{part}{']' * depth}]" for depth, part in enumerate(path + [name]))
+                    self.logger.logerr(f"Error! Found a field {location} outside of [AggregatedValues]. Fields must be "
+                                       f"sub-sections of [AggregatedValues] using double brackets, eg [[{name}]]")
+                find_misplaced(subsection, path + [name])
+
+        find_misplaced(config_dict, [])
+
+        if not self.fields:
+            self.logger.logerr("Error! No fields are configured, nothing will be added to the archive record. Fields must be "
+                               "sub-sections of [AggregatedValues] using double brackets, eg [[outTemp_max]]")
+        elif not self.time_periods and all(field_dict["period"] in ("day", "since") for field_dict in self.fields.values()):
+            self.logger.logerr("Error! All time periods (day, yesterday, month, last_month, year, last_year, alltime) are "
+                               "set to false, nothing will be added to the archive record")
+
     def configure_fields(self, service_dict):
         """ Configure the fields """
 
@@ -392,6 +419,7 @@ class AggregatedValuesService(StdService):
             field_dict = service_dict.get(field, {})
             ignore = to_bool(field_dict.get("ignore", False))
             if ignore:
+                self.logger.loginf(f"Field '{field}' has ignore = true, skipping...")
                 continue
 
             observation = field_dict.get("observation")
