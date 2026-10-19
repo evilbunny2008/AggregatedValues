@@ -449,6 +449,9 @@ class AggregatedValuesService(StdService):
 
         for field in self.fields:
 
+            output_name = field
+            time_span = None
+
             try:
                 field_dict = copy.deepcopy(self.fields[field])
 
@@ -503,8 +506,11 @@ class AggregatedValuesService(StdService):
                         new_record[output_name] = 0
 
             except Exception as exception:
-                tb = traceback.format_exc()
-                self.logger.logerr(f"Aggregation failed: {tb}")
+                # chain=False leaves out unrelated exceptions WeeWX was handling when the
+                # archive record was generated, eg BreakLoop and genArchiveRecords not implemented
+                tb = "".join(traceback.format_exception(type(exception), exception, exception.__traceback__, chain=False))
+                self.logger.logerr(f"Aggregation failed for '{output_name}' (observation: {self.fields[field].get('observation')}, "
+                                   f"aggregation: {self.fields[field].get('aggregation')}, timespan: {time_span}): {exception}\n{tb}")
                 # Unknown types/aggregations will never succeed, so only retry other errors (eg database errors)
                 if not isinstance(exception, (weewx.UnknownType, weewx.UnknownAggregation, weewx.CannotCalculate)):
                     failed = True
