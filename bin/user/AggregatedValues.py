@@ -23,6 +23,14 @@ from weewx.engine import StdService
 
 VERSION = "1.0.0"
 
+# Time periods that can be turned on and off in [AggregatedValues]. "day" is calculated on every
+# archive record, the others are cached and only recalculated when the day changes.
+TIME_PERIODS = ["day", "yesterday", "month", "last_month", "year", "last_year", "alltime"]
+
+# Valid values for a field's period, see TimeSpanProvider
+VALID_PERIODS = ["hour", "day", "yesterday", "week", "month", "last_month", "year", "last_year", "last3hours",
+                 "last24hours", "last7days", "last31days", "last366days", "since", "alltime"]
+
 def resolve_obs_group(observation, agg_type):
     """
     Return the unit group for an aggregated observation, mirroring
@@ -296,6 +304,9 @@ class AggregatedValuesService(StdService):
             self.logger.loginf("Not enabled, exiting.")
             return
 
+        self.time_periods = [timeperiod for timeperiod in TIME_PERIODS if to_bool(service_dict.get(timeperiod, True))]
+        self.logger.loginf(f"Enabled time periods: {', '.join(self.time_periods)}")
+
         self.fields = self.configure_fields(service_dict)
 
         self.logger.loginf(f"Configured fields: {', '.join(self.fields)}")
@@ -304,6 +315,7 @@ class AggregatedValuesService(StdService):
         # stale values are discarded when fields are added, removed or changed.
         self.config_fingerprint = {
             "since_hour": self.since_hour,
+            "time_periods": self.time_periods,
             "fields": {field: dict(field_dict) for field, field_dict in self.fields.items()},
         }
 
@@ -392,8 +404,13 @@ class AggregatedValuesService(StdService):
                 self.logger.logerr(f"Error! Field '{field}' doesn't have an aggregation set, skipping...")
                 continue
 
-            if field_dict.get("period") is None:
+            period = field_dict.get("period")
+            if period is None:
                 self.logger.logerr(f"Error! Field '{field}' doesn't have a period set, skipping...")
+                continue
+
+            if period not in VALID_PERIODS:
+                self.logger.logerr(f"Error! Field '{field}' has an invalid period '{period}', valid values are: {', '.join(VALID_PERIODS)}, skipping...")
                 continue
 
             resolved_group = resolve_obs_group(observation, aggregation)
@@ -403,19 +420,14 @@ class AggregatedValuesService(StdService):
 
             #self.logger.logdbg(f"{observation} with {aggregation} resolved to {resolved_group}")
 
-            for timeperiod in ["day", "yesterday", "month", "last_month", "year", "last_year", "alltime"]:
-                output_name = field
-                if timeperiod is not None:
-                    period = field_dict.get("period")
-                    if period == "day":
-                        output_name = timeperiod + "_" + field
-                        #self.logger.logdbg(f"output_name: {output_name}")
-                    elif period == "since":
-                        output_name = timeperiod + "_" + field
-                        #self.logger.logdbg(f"output_name: {output_name}")
-                    else:
-                        continue
+            # day and since fields are output once per enabled time period, eg day_outTemp_max,
+            # other periods (eg last3hours) are output once, using the field name
+            if period in ("day", "since"):
+                output_names = [timeperiod + "_" + field for timeperiod in self.time_periods]
+            else:
+                output_names = [field]
 
+            for output_name in output_names:
                 if weewx.units.obs_group_dict.get(output_name) is None:
                     #self.logger.logdbg(f"Set '{output_name}' to be in {resolved_group}")
                     weewx.units.obs_group_dict[output_name] = resolved_group
@@ -445,7 +457,11 @@ class AggregatedValuesService(StdService):
                 conversion_type = field_dict.get("conversion_type")
 
                 output_name = field
-                if timeperiod is not None:
+                if timeperiod is None:
+                    # Only fields with their own fixed period, eg last3hours
+                    if period in ("day", "since"):
+                        continue
+                else:
                     if period == "day":
                         field_dict["period"] = timeperiod
                         output_name = timeperiod + "_" + field
@@ -515,10 +531,19 @@ class AggregatedValuesService(StdService):
 
         should_reset = self.should_reset(dt, eff_dt)
 
-        today, _ = self.generate_records(record["dateTime"])
-        new_values = [today]
+        # Fields with their own fixed period, eg last3hours, are calculated on every record
+        fixed_period, _ = self.generate_records(record["dateTime"], None)
+        new_values = [fixed_period]
 
-        for timeperiod in ["yesterday", "month", "last_month", "year", "last_year", "alltime"]:
+        if "day" in self.time_periods:
+            today, _ = self.generate_records(record["dateTime"])
+            new_values.append(today)
+
+        for timeperiod in TIME_PERIODS[1:]:
+            if timeperiod not in self.time_periods:
+                setattr(self.storage, timeperiod, None)
+                continue
+
             values = getattr(self.storage, timeperiod)
 
             if should_reset or values is None:
