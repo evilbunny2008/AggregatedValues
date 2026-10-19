@@ -298,6 +298,8 @@ class AggregatedValuesService(StdService):
 
         self.fields = self.configure_fields(service_dict)
 
+        self.logger.loginf(f"Configured fields: {', '.join(self.fields)}")
+
         # Fingerprint of the config the cached values were generated from, so
         # stale values are discarded when fields are added, removed or changed.
         self.config_fingerprint = {
@@ -423,8 +425,10 @@ class AggregatedValuesService(StdService):
         return fields
 
     def generate_records(self, dateTime, timeperiod="day"):
+        """ Returns the aggregated values, and whether any aggregation failed. """
 
         new_record = {}
+        failed = False
         # Use the engine's shared, cached manager rather than opening a new
         # connection. The engine owns it, so it must not be closed here.
         manager = self.engine.db_binder.get_manager(self.binding)
@@ -485,8 +489,11 @@ class AggregatedValuesService(StdService):
             except Exception as exception:
                 tb = traceback.format_exc()
                 self.logger.logerr(f"Aggregation failed: {tb}")
+                # Unknown types/aggregations will never succeed, so only retry other errors (eg database errors)
+                if not isinstance(exception, (weewx.UnknownType, weewx.UnknownAggregation, weewx.CannotCalculate)):
+                    failed = True
 
-        return new_record
+        return new_record, failed
 
     def should_reset(self, dt, eff_dt):
 
@@ -506,45 +513,29 @@ class AggregatedValuesService(StdService):
         eff_dt = effective_date(dt, self.since_hour)
         self.logger.loginf(f"eff_dt: {eff_dt.date()}")
 
-        #self.storage.yesterday = self.generate_records(record["dateTime"], "yesterday")
-
         should_reset = self.should_reset(dt, eff_dt)
 
-        if should_reset or self.storage.yesterday is None:
-            self.storage.yesterday = self.generate_records(record["dateTime"], "yesterday")
-            self.storage.dt = dt
-            self.storage.eff_dt = eff_dt
+        today, _ = self.generate_records(record["dateTime"])
+        new_values = [today]
 
-        if should_reset or self.storage.month is None:
-            self.storage.month = self.generate_records(record["dateTime"], "month")
-            self.storage.dt = dt
-            self.storage.eff_dt = eff_dt
+        for timeperiod in ["yesterday", "month", "last_month", "year", "last_year", "alltime"]:
+            values = getattr(self.storage, timeperiod)
 
-        if should_reset or self.storage.last_month is None:
-            self.storage.last_month = self.generate_records(record["dateTime"], "last_month")
-            self.storage.dt = dt
-            self.storage.eff_dt = eff_dt
+            if should_reset or values is None:
+                values, failed = self.generate_records(record["dateTime"], timeperiod)
+                self.storage.dt = dt
+                self.storage.eff_dt = eff_dt
 
-        if should_reset or self.storage.year is None:
-            self.storage.year = self.generate_records(record["dateTime"], "year")
-            self.storage.dt = dt
-            self.storage.eff_dt = eff_dt
+                # Don't cache partial results, so failed aggregations are retried on the next record
+                setattr(self.storage, timeperiod, None if failed else values)
 
-        if should_reset or self.storage.last_year is None:
-            self.storage.last_year = self.generate_records(record["dateTime"], "last_year")
-            self.storage.dt = dt
-            self.storage.eff_dt = eff_dt
+            new_values.append(values)
 
-        if should_reset or self.storage.alltime is None:
-            self.storage.alltime = self.generate_records(record["dateTime"], "alltime")
-            self.storage.dt = dt
-            self.storage.eff_dt = eff_dt
-
-        today = self.generate_records(record["dateTime"])
-
-        for records in [today, self.storage.yesterday, self.storage.month, self.storage.last_month, self.storage.year, self.storage.last_year, self.storage.alltime]:
+        for records in new_values:
             for key in records.keys():
                 record[key] = records[key]
+
+        self.logger.logdbg(f"Added to archive record: {', '.join(sorted(key for records in new_values for key in records))}")
 
         self.save_pickle()
 
