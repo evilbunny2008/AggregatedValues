@@ -23,9 +23,11 @@ from weewx.engine import StdService
 
 VERSION = "1.0.0"
 
-# Time periods that can be turned on and off in [AggregatedValues]. "day" is calculated on every
-# archive record, the others are cached and only recalculated when the day changes.
+# Time periods that can be turned on and off in [AggregatedValues]. Periods that are still running
+# are calculated on every archive record, completed periods are cached and only recalculated when
+# the day changes.
 TIME_PERIODS = ["day", "yesterday", "month", "last_month", "year", "last_year", "alltime"]
+RUNNING_PERIODS = ["day", "month", "year", "alltime"]
 
 # Valid values for a field's period, see TimeSpanProvider
 VALID_PERIODS = ["hour", "day", "yesterday", "week", "month", "last_month", "year", "last_year", "last3hours",
@@ -121,7 +123,7 @@ class TimeSpanProvider:
             "alltime": self.alltime,
         }
 
-        if 0 < since_hour > 23:
+        if not 0 <= since_hour <= 23:
             raise ValueError("since_hour must be between 0 and 23 or not set")
 
         self.since_seconds = since_hour * 3600
@@ -191,8 +193,12 @@ class TimeSpanProvider:
         return self._last_n_days(366, timestamp)
 
     def alltime(self, timestamp):
-        """ Get a timespan for the last 366 days. """
-        return self._last_n_days(36600, timestamp)
+        """ Get a timespan from the first record to the end of the day. """
+        if self.first_timestamp is None:
+            return self._last_n_days(36600, timestamp)
+
+        # Starting on the first record and ending at midnight lets the daily summaries be used
+        return TimeSpan(self.first_timestamp, self.day(timestamp).stop)
 
     def _last_n_days(self, days, timestamp):
         """ Get a TimeSpan for the last N days """
@@ -578,13 +584,17 @@ class AggregatedValuesService(StdService):
         fixed_period, _ = self.generate_records(record["dateTime"], unit_system, None)
         new_values = [fixed_period]
 
-        if "day" in self.time_periods:
-            today, _ = self.generate_records(record["dateTime"], unit_system)
-            new_values.append(today)
-
-        for timeperiod in TIME_PERIODS[1:]:
+        for timeperiod in TIME_PERIODS:
             if timeperiod not in self.time_periods:
-                setattr(self.storage, timeperiod, None)
+                if timeperiod not in RUNNING_PERIODS:
+                    setattr(self.storage, timeperiod, None)
+                continue
+
+            # Running periods change with every record, so caching them would leave out
+            # everything since the last reset, eg the rain since midnight in month_rain_sum
+            if timeperiod in RUNNING_PERIODS:
+                values, _ = self.generate_records(record["dateTime"], unit_system, timeperiod)
+                new_values.append(values)
                 continue
 
             values = getattr(self.storage, timeperiod)
